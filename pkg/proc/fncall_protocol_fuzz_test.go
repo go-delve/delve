@@ -1,46 +1,8 @@
-// Layer 2 call-injection protocol fuzzing harness.
+// FuzzCallInjectionProtocol feeds a sequence of protocol-register values
+// (R12 / debugCallV2) into funcCallStep after CallInjectionStart, covering
+// the Start-before-SetTarget window from issue #4085.
 //
-// This file drives the *real* call-injection protocol handler
-// (funcCallStep/funcCallFinish in fncall.go, plus the evalStack.run opcode
-// loop in eval.go) with a mock Thread whose protocol register (R12 on amd64,
-// see runtime.debugCallV2) yields a caller-controlled sequence of values.
-//
-// Unlike a live target, no real process is stepped: the harness seeds state
-// as if evalCallInjectionStart had already succeeded (a functionCallState is
-// pushed with savedRegs/protocolReg/debugCallName filled in) and then feeds
-// protocol register values into funcCallStep one step at a time. This lets us
-// exercise the sequences that terminate *before* a successful
-// CallInjectionSetTarget — the class of bugs behind issue #4085 — without
-// needing runtime.debugCallV2 or a debuggee.
-//
-// Scope: the branches that do not require a realistic goroutine stack are
-// fully supported and produce clean errors (or nil):
-//   - debugCallRegRestoreRegisters (16): a premature RestoreRegisters finishes
-//     the protocol via a no-op StepInstruction (stepInstructionOut exits because
-//     the mock ThreadLocation has no function); without production guards this
-//     empties fncalls and panics in CallInjectionSetTarget (#4085/#4363).
-//     With the guards it yields a clean "terminated before target" error.
-//   - debugCallRegCompleteCall (0) followed by CallInjectionSetTarget: callOP's
-//     stack writes land in scratch memory (setPC/setSP are recorded no-ops).
-//   - unknown/exhausted register values: funcCallStep's default no-op branch.
-//
-// The precheck-failure (8), read-return (1) and read-panic (2) branches call
-// ThreadScope/readStackVariable, which unwind a real goroutine stack. The mock
-// initializes BinaryInfo.Images, Target.scache, Function.cu, and PC/SP in the
-// register slice so those paths fail cleanly (e.g. findType misses, unreadable
-// stack memory, or empty return locals) instead of panicking on nil maps or
-// incomplete register state. That is sufficient for panic hunting; a fully
-// decodable stack is not required.
-//
-// Additional restriction: debugCallRegCompleteCall (0) may appear at most
-// once per sequence. It legitimately signals "ready to call" only once per
-// injection; the mock's fixed two-op stack (CallInjectionSetTarget then
-// CallInjectionComplete, see setupPostStartCallInjection) has nothing left to
-// execute for a second 0, so replaying it lands on a real, pre-existing
-// sanity check in eval.go's evalStack.run ("eval program finished without
-// error but N call injections still active") instead of a clean protocol
-// error. decodeCallInjectionProtocolRegs and FuzzCallInjectionProtocol
-// deliberately map a second 0 to an exhausted/unknown register value.
+//	go test -run NONE -fuzz=FuzzCallInjectionProtocol -fuzztime=5s ./pkg/proc
 
 package proc
 
@@ -61,7 +23,7 @@ import (
 	"github.com/go-delve/delve/pkg/proc/evalop"
 )
 
-var errFuzzNoLiveTarget = errors.New("call injection terminated before target was set: no live target in fuzz harness")
+var errFuzzNoLiveTarget = errors.New("no live target in fuzz harness")
 
 const (
 	fuzzProtocolFixedPC = 0x2000
@@ -366,43 +328,27 @@ func TestCallInjectionProtocol(t *testing.T) {
 	t.Run("PrematureRestore", func(t *testing.T) {
 		err := runCallInjectionProtocolFuzz([]uint64{16})
 		if err == nil {
-			t.Fatal("expected error for premature RestoreRegisters before SetTarget")
+			t.Fatal("expected error for RestoreRegisters before CallInjectionComplete")
 		}
 		if strings.Contains(err.Error(), "no live target") {
 			t.Fatalf("stepInstructionOut should succeed in the mock; got harness short-circuit: %v", err)
 		}
-		FailIfInternalDebuggerError(t, err)
-		if !strings.Contains(err.Error(), "terminated before target") {
-			t.Fatalf("expected clean terminated-before-target error, got: %v", err)
+		failIfInternalDebuggerError(t, err)
+		if !strings.Contains(err.Error(), "terminated before the function call started") {
+			t.Fatalf("expected protocol-abort error, got: %v", err)
 		}
 	})
 
 	t.Run("UnknownThenRestore", func(t *testing.T) {
-		FailIfInternalDebuggerError(t, runCallInjectionProtocolFuzz([]uint64{0x42, 16}))
-	})
-
-	t.Run("EmptyFncallStepDoesNotPanic", func(t *testing.T) {
-		bi := NewBinaryInfo("linux", "amd64")
-		th := newFuzzProtocolThread(bi, []uint64{16})
-		stack, scope := setupPostStartCallInjection(th)
-		stack.fncallPop()
-		defer func() {
-			if r := recover(); r != nil {
-				t.Fatalf("funcCallStep panicked on empty fncalls: %v", r)
-			}
-		}()
-		if finished := funcCallStep(scope, stack, th); finished {
-			t.Fatal("expected not finished")
-		}
-		if stack.err == nil || !strings.Contains(stack.err.Error(), "terminated before target") {
-			t.Fatalf("expected terminated-before-target, got %v", stack.err)
-		}
-		FailIfInternalDebuggerError(t, stack.err)
+		failIfInternalDebuggerError(t, runCallInjectionProtocolFuzz([]uint64{0x42, 16}))
 	})
 
 	seeds := [][]uint64{
 		{0},
+		{0, 0},
+		{0, 16},
 		{0, 1, 16},
+		{0, 2, 16},
 		{8, 16},
 		{0x42, 16},
 		{1, 16},
@@ -413,7 +359,7 @@ func TestCallInjectionProtocol(t *testing.T) {
 	}
 	for _, s := range seeds {
 		t.Run(fmt.Sprintf("seed/%#v", s), func(t *testing.T) {
-			FailIfInternalDebuggerError(t, runCallInjectionProtocolFuzz(s))
+			failIfInternalDebuggerError(t, runCallInjectionProtocolFuzz(s))
 		})
 	}
 }
@@ -423,15 +369,9 @@ func decodeCallInjectionProtocolRegs(buf []byte) []uint64 {
 		buf = buf[:8]
 	}
 	regs := make([]uint64, len(buf))
-	seenCompleteCall := false
 	for i, b := range buf {
 		switch b % 6 {
 		case 0:
-			if seenCompleteCall {
-				regs[i] = fuzzProtocolExhaustedRegval
-				continue
-			}
-			seenCompleteCall = true
 			regs[i] = 0
 		case 1:
 			regs[i] = 1
@@ -462,6 +402,6 @@ func FuzzCallInjectionProtocol(f *testing.F) {
 		f.Add(seed)
 	}
 	f.Fuzz(func(t *testing.T, buf []byte) {
-		FailIfInternalDebuggerError(t, runCallInjectionProtocolFuzz(decodeCallInjectionProtocolRegs(buf)))
+		failIfInternalDebuggerError(t, runCallInjectionProtocolFuzz(decodeCallInjectionProtocolRegs(buf)))
 	})
 }

@@ -103,6 +103,12 @@ type functionCallState struct {
 
 	protocolReg   uint64
 	debugCallName string
+
+	// callInjectionCompleted is set when CallInjectionComplete runs, i.e.
+	// after the target function has been set up and the runtime is asked to
+	// execute it. RestoreRegisters before this point is a protocol abort,
+	// not a successful call.
+	callInjectionCompleted bool
 }
 
 type undoInjection struct {
@@ -811,10 +817,7 @@ const (
 func funcCallStep(callScope *EvalScope, stack *evalStack, thread Thread) bool {
 	p := callScope.callCtx.p
 	bi := p.BinInfo()
-	fncall := stack.requireFncall()
-	if fncall == nil {
-		return false
-	}
+	fncall := stack.fncallPeek()
 
 	regs, err := thread.Registers()
 	if err != nil {
@@ -857,6 +860,9 @@ func funcCallStep(callScope *EvalScope, stack *evalStack, thread Thread) bool {
 
 	case debugCallRegCompleteCall: // 0
 		p.fncallForG[callScope.g.ID].startThreadID = 0
+		if fncall.callInjectionCompleted {
+			stack.callInjectionContinue = true
+		}
 
 	case debugCallRegRestoreRegisters: // 16
 		// runtime requests that we restore the registers (all except pc and sp),
@@ -885,6 +891,9 @@ func funcCallStep(callScope *EvalScope, stack *evalStack, thread Thread) bool {
 			if err != nil {
 				fncall.err = fmt.Errorf("could not restore RFLAGS register: %v", err)
 			}
+		}
+		if !fncall.callInjectionCompleted && fncall.err == nil {
+			fncall.err = errors.New("call injection protocol terminated before the function call started")
 		}
 		return true
 
@@ -990,10 +999,7 @@ func callInjectionComplete2(callScope *EvalScope, bi *BinaryInfo, fncall *functi
 }
 
 func (scope *EvalScope) evalCallInjectionSetTarget(op *evalop.CallInjectionSetTarget, stack *evalStack, thread Thread) {
-	fncall := stack.requireFncall()
-	if fncall == nil {
-		return
-	}
+	fncall := stack.fncallPeek()
 	if !fncall.hasDebugPinner && (fncall.fn == nil || fncall.receiver != nil || fncall.closureAddr != 0) {
 		stack.err = funcCallEvalFuncExpr(scope, stack, fncall)
 		if stack.err != nil {

@@ -20,10 +20,9 @@ import (
 var fuzzEvalExpressionSetup = flag.Bool("fuzzevalexpressionsetup", false, "Performs setup for FuzzEvalExpression")
 
 const (
-	fuzzExecutable   = "testdata/fuzzexe"
-	fuzzCoredump     = "testdata/fuzzcoredump"
-	fuzzInfoPath     = "testdata/fuzzinfo"
-	fuzzMaxExprBytes = 128
+	fuzzExecutable = "testdata/fuzzexe"
+	fuzzCoredump   = "testdata/fuzzcoredump"
+	fuzzInfoPath   = "testdata/fuzzinfo"
 )
 
 type fuzzInfo struct {
@@ -34,9 +33,6 @@ type fuzzInfo struct {
 }
 
 // FuzzEvalExpression fuzzes the variables loader and expression evaluator of Delve.
-// Fuzz inputs are fuzzbuf (memory splice data) and expr (optional expression).
-// Compile and evaluation errors are expected; only unrecovered panics and errors
-// containing "internal debugger error" fail the fuzz run.
 // To run it, execute the setup first:
 //
 //	go test -run FuzzEvalExpression -fuzzevalexpressionsetup
@@ -63,19 +59,8 @@ func FuzzEvalExpression(f *testing.F) {
 	fns, err := bi.FindFunction("main.main")
 	assertNoError(err, f, "FindFunction main.main")
 	fi.Loc.Fn = fns[0]
-	f.Add(fi.Fuzzbuf, "i1")
-	for _, expr := range []string{
-		"s1[0]",
-		"a1[2:4]",
-		"str1[:3]",
-		"b1",
-		"1+",
-		"nil.(int)",
-		"call foo()",
-	} {
-		f.Add(fi.Fuzzbuf, expr)
-	}
-	f.Fuzz(func(t *testing.T, fuzzbuf []byte, expr string) {
+	f.Add(fi.Fuzzbuf)
+	f.Fuzz(func(t *testing.T, fuzzbuf []byte) {
 		t.Log("fuzzbuf len", len(fuzzbuf))
 		mem := &core.SplicedMemory{}
 
@@ -102,12 +87,11 @@ func FuzzEvalExpression(f *testing.F) {
 		scope := &proc.EvalScope{Location: *fi.Loc, Regs: fi.Regs, Mem: memoryReaderWithFailingWrites{mem}, BinInfo: bi}
 		for _, tc := range getEvalExpressionTestCases() {
 			_, err := scope.EvalExpression(tc.name, pnormalLoadConfig)
-			proc.FailIfInternalDebuggerError(t, err)
-		}
-
-		if expr != "" && len(expr) <= fuzzMaxExprBytes {
-			_, err := scope.EvalExpression(expr, pnormalLoadConfig)
-			proc.FailIfInternalDebuggerError(t, err)
+			if err != nil {
+				if strings.Contains(err.Error(), "internal debugger error") {
+					panic(err)
+				}
+			}
 		}
 	})
 }

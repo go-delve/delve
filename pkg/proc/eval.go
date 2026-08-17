@@ -884,24 +884,6 @@ type evalStack struct {
 	disabledErrors      bool
 }
 
-// evalStepLimit bounds how many opcodes a single evalStack.run invocation
-// may execute. Legitimate programs either finish or suspend via call
-// injection (which returns from run and resets the budget on the next
-// resume). Without this limit, a depth-consistent JumpAlways cycle never
-// suspends and hangs the debugger. The budget is length-relative so a
-// 1-op cycle cannot burn a huge constant, but is still well above typical
-// compiled expressions (tens of ops) and nested call-injection resumes.
-func evalStepLimit(nops int) int {
-	const (
-		minEvalStepsPerRun = 1024
-		evalStepsPerOp     = 256
-	)
-	if n := nops * evalStepsPerOp; n > minEvalStepsPerRun {
-		return n
-	}
-	return minEvalStepsPerRun
-}
-
 func (s *evalStack) push(v *Variable) {
 	if v == nil {
 		panic(errors.New("internal debugger error, nil pushed onto variables stack"))
@@ -930,16 +912,6 @@ func (s *evalStack) fncallPop() *functionCallState {
 }
 
 func (s *evalStack) fncallPeek() *functionCallState {
-	return s.fncalls[len(s.fncalls)-1]
-}
-
-func (s *evalStack) requireFncall() *functionCallState {
-	if len(s.fncalls) == 0 {
-		if s.err == nil {
-			s.err = errors.New("call injection terminated before target was set")
-		}
-		return nil
-	}
 	return s.fncalls[len(s.fncalls)-1]
 }
 
@@ -1045,12 +1017,7 @@ func (stack *evalStack) resume(g *G) {
 
 func (stack *evalStack) run() {
 	scope, curthread := stack.scope, stack.curthread
-	limit := evalStepLimit(len(stack.ops))
-	for steps := 0; stack.opidx < len(stack.ops) && stack.err == nil; steps++ {
-		if steps >= limit {
-			stack.err = fmt.Errorf("expression evaluation exceeded %d step limit", limit)
-			break
-		}
+	for stack.opidx < len(stack.ops) && stack.err == nil {
 		stack.callInjectionContinue = false
 		stack.executeOp()
 		// If the instruction we just executed requests the call injection
@@ -1285,10 +1252,7 @@ func (stack *evalStack) executeOp() {
 		scope.evalCallInjectionSetTarget(op, stack, curthread)
 
 	case *evalop.CallInjectionCopyArg:
-		fncall := stack.requireFncall()
-		if fncall == nil {
-			return
-		}
+		fncall := stack.fncallPeek()
 		actualArg := stack.pop()
 		if actualArg.Name == "" {
 			actualArg.Name = astutil.ExprToString(op.ArgExpr)
@@ -1296,11 +1260,9 @@ func (stack *evalStack) executeOp() {
 		stack.err = funcCallCopyOneArg(scope, fncall, actualArg, &fncall.formalArgs[op.ArgNum], curthread)
 
 	case *evalop.CallInjectionComplete:
-		fncall := stack.requireFncall()
-		if fncall == nil {
-			return
-		}
+		fncall := stack.fncallPeek()
 		fncall.doPinning = op.DoPinning
+		fncall.callInjectionCompleted = true
 		if op.DoPinning {
 			fncall.undoInjection.doComplete2 = true
 		} else {
@@ -1309,10 +1271,7 @@ func (stack *evalStack) executeOp() {
 		stack.callInjectionContinue = true
 
 	case *evalop.CallInjectionComplete2:
-		fncall := stack.requireFncall()
-		if fncall == nil {
-			return
-		}
+		fncall := stack.fncallPeek()
 		if len(fncall.addrsToPin) != 0 {
 			stack.err = fmt.Errorf("internal debugger error: CallInjectionComplete2 called when there still are addresses to pin")
 		}
@@ -1338,10 +1297,7 @@ func (stack *evalStack) executeOp() {
 
 	case *evalop.PushPinAddress:
 		debugPinCount++
-		fncall := stack.requireFncall()
-		if fncall == nil {
-			return
-		}
+		fncall := stack.fncallPeek()
 		addrToPin := fncall.addrsToPin[len(fncall.addrsToPin)-1]
 		fncall.addrsToPin = fncall.addrsToPin[:len(fncall.addrsToPin)-1]
 		typ, err := scope.BinInfo.findType("unsafe.Pointer")
@@ -1531,10 +1487,7 @@ func (scope *EvalScope) evalJump(op *evalop.Jump, stack *evalStack) {
 		stack.opidx = op.Target - 1
 		return
 	case evalop.JumpIfPinningDone:
-		fncall := stack.requireFncall()
-		if fncall == nil {
-			return
-		}
+		fncall := stack.fncallPeek()
 		if len(fncall.addrsToPin) == 0 {
 			stack.opidx = op.Target - 1
 		}

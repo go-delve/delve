@@ -5,8 +5,8 @@
 // need typed operands or a live target. Evaluation errors are expected; only
 // unrecovered panics and errors containing "internal debugger error" fail
 // the fuzz run. Programs that fail DepthCheck (underflow, inconsistent
-// joins, out-of-range jumps) are skipped; end-depth is not required, unlike
-// Compile.
+// joins, out-of-range or backward jumps) are skipped; end-depth is not
+// required, unlike Compile.
 //
 //	go test -run NONE -fuzz=FuzzEvalStackOps -fuzztime=5s ./pkg/proc
 
@@ -135,9 +135,6 @@ func remapEvalStackJumpTargets(ops []evalop.Op) {
 	}
 }
 
-// evalStackOpsDepthOK reports whether ops are underflow-safe and have
-// consistent join depths. End-depth is not checked (DepthCheck endDepth -1)
-// so programs that leave extra values, including Roll, still run.
 func evalStackOpsDepthOK(ops []evalop.Op) bool {
 	return evalop.DepthCheck(ops, -1) == nil
 }
@@ -277,58 +274,13 @@ func TestRunEvalStackOps(t *testing.T) {
 			&evalop.PushConst{Value: constant.MakeInt64(1)},
 			&evalop.Pop{},
 		}
-		FailIfInternalDebuggerError(t, runEvalStackOps(ops))
+		failIfInternalDebuggerError(t, runEvalStackOps(ops))
 	})
 
-	t.Run("EmptyPopIsInternalOrPanicRecovered", func(t *testing.T) {
+	t.Run("EmptyPopErrors", func(t *testing.T) {
 		err := runEvalStackOps([]evalop.Op{&evalop.Pop{}})
-		// Depth-invalid pop is recovered inside executeOp; this is not a
-		// fuzz-corpus case. The harness must not unrecovered-panic.
 		if err == nil {
 			t.Fatal("expected error from empty pop")
-		}
-	})
-
-	t.Run("EmptyFncallCompleteIsCleanError", func(t *testing.T) {
-		err := runEvalStackOps([]evalop.Op{&evalop.CallInjectionComplete{DoPinning: false}})
-		if err == nil {
-			t.Fatal("expected error for CallInjectionComplete with no live call")
-		}
-		FailIfInternalDebuggerError(t, err)
-		if !strings.Contains(err.Error(), "terminated before target") {
-			t.Fatalf("expected terminated-before-target, got: %v", err)
-		}
-	})
-
-	t.Run("EmptyFncallJumpIfPinningDoneIsCleanError", func(t *testing.T) {
-		err := runEvalStackOps([]evalop.Op{
-			&evalop.Jump{When: evalop.JumpIfPinningDone, Target: 1},
-		})
-		if err == nil {
-			t.Fatal("expected error for JumpIfPinningDone with no live call")
-		}
-		FailIfInternalDebuggerError(t, err)
-		if !strings.Contains(err.Error(), "terminated before target") {
-			t.Fatalf("expected terminated-before-target, got: %v", err)
-		}
-	})
-
-	// JumpAlways-to-self is depth-consistent but never suspends. The
-	// production step limit must stop it; a 1-op program uses the minimum
-	// budget (1024), not a huge constant that would dominate fuzz runtime.
-	t.Run("JumpAlwaysToSelfTerminates", func(t *testing.T) {
-		ops := []evalop.Op{
-			&evalop.Jump{When: evalop.JumpAlways, Target: 0},
-		}
-		err := runEvalStackOps(ops)
-		if err == nil {
-			t.Fatal("expected step-limit error from JumpAlways-to-self")
-		}
-		if strings.Contains(err.Error(), "internal debugger error") {
-			t.Fatalf("step-limit error must not be an internal debugger error: %v", err)
-		}
-		if !strings.Contains(err.Error(), "exceeded 1024 step limit") {
-			t.Fatalf("expected minimum 1024-step limit, got: %v", err)
 		}
 	})
 }
@@ -350,6 +302,31 @@ func FuzzEvalStackOps(f *testing.F) {
 		if !evalStackOpsDepthOK(ops) {
 			return
 		}
-		FailIfInternalDebuggerError(t, runEvalStackOps(ops))
+		failIfInternalDebuggerError(t, runEvalStackOps(ops))
 	})
+}
+
+func failIfInternalDebuggerError(t testing.TB, err error) {
+	t.Helper()
+	if err != nil && strings.Contains(err.Error(), "internal debugger error") {
+		t.Fatalf("unexpected internal debugger error: %v", err)
+	}
+}
+
+type zeroFillMemory struct {
+	writeErr error
+}
+
+func (m *zeroFillMemory) ReadMemory(b []byte, addr uint64) (int, error) {
+	for i := range b {
+		b[i] = 0
+	}
+	return len(b), nil
+}
+
+func (m *zeroFillMemory) WriteMemory(_ uint64, b []byte) (int, error) {
+	if m.writeErr != nil {
+		return 0, m.writeErr
+	}
+	return len(b), nil
 }

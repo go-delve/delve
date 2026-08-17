@@ -235,11 +235,17 @@ func (ctx *compileCtx) pushOp(op Op) {
 	ctx.ops = append(ctx.ops, op)
 }
 
-// DepthCheck validates stack-depth consistency of ops. Compile, CompileAST,
-// and CompileSet call this after generating a program (with endDepth 1 for
-// expressions and 0 for assignments). If endDepth is negative the final
-// stack depth is not checked, so callers that only care about underflow and
-// consistent join depths (for example a fuzz filter) can pass -1.
+// DepthCheck validates the list of instructions produced by Compile,
+// CompileAST, and CompileSet by performing a stack depth check.
+// It calculates the depth of the stack at every instruction and checks
+// that they have enough arguments to execute. For instructions that can
+// be reached through multiple paths (because of a jump) it checks that
+// all paths reach the instruction with the same stack depth.
+// Backward jumps are rejected, except the JumpAlways back-edge
+// compilePinningLoop emits to a JumpIfPinningDone header.
+// Finally it checks that the stack depth after all instructions have
+// executed is equal to endDepth, unless endDepth is negative (callers
+// that only care about underflow and consistent join depths can pass -1).
 func DepthCheck(ops []Op, endDepth int) error {
 	depth := make([]int, len(ops)+1) // depth[i] is the depth of the stack before i-th instruction
 	for i := range depth {
@@ -271,6 +277,9 @@ func DepthCheck(ops []Op, endDepth int) error {
 			if op.Target < 0 || op.Target > len(ops) {
 				return fmt.Errorf("internal debugger error: depth check error at instruction %d: jump target %d out of range\n%s", i, op.Target, Listing(depth, ops))
 			}
+			if op.Target <= i && !pinningLoopJump(op, ops) {
+				return fmt.Errorf("internal debugger error: depth check error at instruction %d: backward jump to %d\n%s", i, op.Target, Listing(depth, ops))
+			}
 			checkAndSet(op.Target, d)
 		case *CallInjectionStartSpecial:
 			debugPinnerSeen = true
@@ -288,6 +297,16 @@ func DepthCheck(ops []Op, endDepth int) error {
 		return fmt.Errorf("internal debugger error: depth check failed: depth at the end is not %d (got %d)\n%s", endDepth, depth[len(ops)], Listing(depth, ops))
 	}
 	return nil
+}
+
+// pinningLoopJump reports whether jmp is the backward JumpAlways that
+// compilePinningLoop emits to a JumpIfPinningDone header.
+func pinningLoopJump(jmp *Jump, ops []Op) bool {
+	if jmp.When != JumpAlways || jmp.Target < 0 || jmp.Target >= len(ops) {
+		return false
+	}
+	hdr, ok := ops[jmp.Target].(*Jump)
+	return ok && hdr.When == JumpIfPinningDone
 }
 
 func (ctx *compileCtx) compileAST(t ast.Expr, toplevel bool) error {
