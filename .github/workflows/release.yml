@@ -34,6 +34,51 @@ jobs:
           echo "::error::A tag must be specified for non-dry-run releases"
           exit 1
 
+      - name: Reject existing published release
+        if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.dry_run == false)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          response_file="${RUNNER_TEMP}/release-preflight.json"
+          encoded_tag="$(jq -rn --arg tag "${RELEASE_TAG}" '$tag | @uri')"
+
+          status="$(
+            curl \
+              --silent \
+              --show-error \
+              --output "${response_file}" \
+              --write-out '%{http_code}' \
+              --header 'Accept: application/vnd.github+json' \
+              --header "Authorization: Bearer ${GH_TOKEN}" \
+              --header 'X-GitHub-Api-Version: 2026-03-10' \
+              "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/releases/tags/${encoded_tag}"
+          )"
+
+          case "${status}" in
+            200)
+              echo \
+                "::error title=Release already published::"\
+                "${RELEASE_TAG} already has a published GitHub Release. "\
+                "Immutable releases cannot accept new assets. Push a new "\
+                "tag and let GoReleaser create and publish the release."
+              exit 1
+              ;;
+            404)
+              # No published release exists; an existing draft is intentionally allowed.
+              ;;
+            *)
+              echo \
+                "::error title=Release preflight failed::"\
+                "GitHub returned HTTP ${status} while checking ${RELEASE_TAG}."
+              cat "${response_file}"
+              exit 1
+              ;;
+          esac
+
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
