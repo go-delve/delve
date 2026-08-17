@@ -1,3 +1,5 @@
+//go:build !windows
+
 package sys
 
 import (
@@ -63,7 +65,7 @@ func sigsetAdd(set *unix.Sigset_t, signal unix.Signal) error {
 	// For amd64, runtime.sigaddset() performs the following operation:
 	// set[(signal-1)/32] |= 1 << ((uint32(signal) - 1) & 31)
 	//
-	// This trick depends on sigset being two u32's, causing a signal in the the
+	// This trick depends on sigset being two u32's, causing a signal in the
 	// bottom 31 bits to be written to the low word if bit 32 is low, or the high
 	// word if bit 32 is high.
 
