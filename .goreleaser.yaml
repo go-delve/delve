@@ -71,6 +71,11 @@ signs:
     output: true
 
 release:
+  # Reuse a draft left behind by an interrupted release run.
+  use_existing_draft: true
+  # When retrying a partial draft, replace same-name artifacts that were
+  # successfully uploaded before the previous run was interrupted.
+  replace_existing_artifacts: true
   github:
     owner: go-delve
     name: delve
