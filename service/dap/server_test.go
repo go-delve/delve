@@ -526,15 +526,7 @@ func TestLaunchStopOnEntry(t *testing.T) {
 func TestAttachStopOnEntry(t *testing.T) {
 	runTest(t, "loopprog", func(client *daptest.Client, fixture protest.Fixture) {
 		// Start the program to attach to
-		cmd := exec.Command(fixture.Path)
-		stdout, err := cmd.StdoutPipe()
-		if err != nil {
-			t.Fatal(err)
-		}
-		cmd.Stderr = os.Stderr
-		if err := cmd.Start(); err != nil {
-			t.Fatal(err)
-		}
+		cmd, stdout := startFixtureWithStdoutPipe(t, fixture)
 		// Wait for output.
 		// This will give the target process time to initialize the runtime before we attach,
 		// so we can rely on having goroutines when they are requested on attach.
@@ -807,15 +799,7 @@ func TestAttachWithFollowExec(t *testing.T) {
 
 	runTest(t, "spawn", func(client *daptest.Client, fixture protest.Fixture) {
 		// Start the program to attach to
-		cmd := exec.Command(fixture.Path, "spawn", "10000000")
-		stdout, err := cmd.StdoutPipe()
-		if err != nil {
-			t.Fatal(err)
-		}
-		cmd.Stderr = os.Stderr
-		if err := cmd.Start(); err != nil {
-			t.Fatal(err)
-		}
+		cmd, stdout := startFixtureWithStdoutPipe(t, fixture, "spawn", "10000000")
 		// Wait for output.
 		// This will give the target process time to initialize the runtime before we attach,
 		// so we can rely on having goroutines when they are requested on attach.
@@ -4151,18 +4135,70 @@ func substitutePathTestHelper(t *testing.T, fixture protest.Fixture, client *dap
 		}})
 }
 
-// execFixture runs the binary fixture.Path and hooks up stdout and stderr
-// to os.Stdout and os.Stderr.
-func execFixture(t *testing.T, fixture protest.Fixture) *exec.Cmd {
+func TestExecFixture_DoesNotInheritTestStdio(t *testing.T) {
+	fixture := protest.BuildFixture(t, "loopprog", protest.AllNonOptimized)
+	cmd := execFixture(t, fixture)
+	if cmd.Stdout == os.Stdout {
+		t.Error("Stdout must not be os.Stdout; inheriting go test pipes can cause WaitDelay failures")
+	}
+	if cmd.Stderr == os.Stderr {
+		t.Error("Stderr must not be os.Stderr; inheriting go test pipes can cause WaitDelay failures")
+	}
+}
+
+// execFixture starts fixture.Path without attaching its stdio to the test
+// process. Inheriting os.Stdout/os.Stderr shares go test's pipes; if the child
+// outlives the test binary, go test fails with WaitDelay / "I/O incomplete".
+// A Cleanup hook kills and waits for the process.
+func execFixture(t *testing.T, fixture protest.Fixture, args ...string) *exec.Cmd {
 	t.Helper()
-	// TODO(polina): do I need to sanity check testBackend and runtime.GOOS?
-	cmd := exec.Command(fixture.Path)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	cmd := exec.Command(fixture.Path, args...)
+	// nil redirects to the OS null device and does not inherit test pipes.
+	cmd.Stdout = nil
+	cmd.Stderr = nil
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
 	}
+	registerFixtureProcessCleanup(t, cmd)
 	return cmd
+}
+
+// startFixtureWithStdoutPipe is like execFixture but returns a pipe for reading
+// the fixture's stdout. Stderr is discarded (not inherited from the test).
+func startFixtureWithStdoutPipe(t *testing.T, fixture protest.Fixture, args ...string) (*exec.Cmd, io.ReadCloser) {
+	t.Helper()
+	return startFixtureWithStdoutPipeCleanup(t, true, fixture, args...)
+}
+
+// startFixtureWithStdoutPipeCleanup is like startFixtureWithStdoutPipe. When
+// cleanup is false, the caller must reap the process (e.g. when a debugger may
+// still be attached and Kill+Wait in Cleanup would hang).
+func startFixtureWithStdoutPipeCleanup(t *testing.T, cleanup bool, fixture protest.Fixture, args ...string) (*exec.Cmd, io.ReadCloser) {
+	t.Helper()
+	cmd := exec.Command(fixture.Path, args...)
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd.Stderr = nil
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	if cleanup {
+		registerFixtureProcessCleanup(t, cmd)
+	}
+	return cmd, stdout
+}
+
+func registerFixtureProcessCleanup(t *testing.T, cmd *exec.Cmd) {
+	t.Helper()
+	t.Cleanup(func() {
+		if cmd.Process == nil {
+			return
+		}
+		_ = cmd.Process.Kill()
+		_ = cmd.Wait()
+	})
 }
 
 // TestWorkingDir executes to a breakpoint and tests that the specified
@@ -6464,15 +6500,7 @@ func TestAttachWaitForRequest(t *testing.T) {
 		t.Skip("test skipped on freebsd")
 	}
 	runTest(t, "loopprog", func(client *daptest.Client, fixture protest.Fixture) {
-		cmd := exec.Command(fixture.Path)
-		stdout, err := cmd.StdoutPipe()
-		if err != nil {
-			t.Fatal(err)
-		}
-		cmd.Stderr = os.Stderr
-		if err := cmd.Start(); err != nil {
-			t.Fatal(err)
-		}
+		cmd, stdout := startFixtureWithStdoutPipe(t, fixture)
 		// Wait for output.
 		// This will give the target process time to initialize the runtime before we attach,
 		// so we can rely on having goroutines when they are requested on attach.
@@ -7511,7 +7539,7 @@ func TestAttachRemoteToDlvLaunchHaltedStopOnEntry(t *testing.T) {
 }
 
 func TestAttachRemoteToDlvAttachHaltedStopOnEntry(t *testing.T) {
-	cmd, dbg := attachDebuggerWithTargetHalted(t, "http_server")
+	_, dbg := attachDebuggerWithTargetHalted(t, "http_server")
 	runTestWithDebugger(t, dbg, func(client *daptest.Client) {
 		client.AttachRequest(map[string]any{"mode": "remote", "stopOnEntry": true})
 		client.ExpectCapabilitiesEventSupportTerminateDebuggee(t)
@@ -7521,7 +7549,6 @@ func TestAttachRemoteToDlvAttachHaltedStopOnEntry(t *testing.T) {
 		client.ExpectStoppedEvent(t)
 		client.ExpectConfigurationDoneResponse(t)
 	})
-	cmd.Process.Kill()
 }
 
 func TestAttachRemoteToHaltedTargetContinueOnEntry(t *testing.T) {
@@ -8453,17 +8480,11 @@ func TestBreakpointAfterDisconnect(t *testing.T) {
 	}
 	fixture := protest.BuildFixture(t, "testnextnethttp", protest.AllNonOptimized)
 
-	cmd := exec.Command(fixture.Path)
-
-	// Capture stdout to read the port number
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		t.Fatal("failed to create stdout pipe:", err)
-	}
-	cmd.Stderr = os.Stderr
-	if err := cmd.Start(); err != nil {
-		t.Fatal(err)
-	}
+	// Capture stdout to read the port number; do not inherit test stdio.
+	// Skip automatic Kill+Wait cleanup: disconnect keeps the debugger attached
+	// (AcceptMulti + kill=false), so Cleanup Wait would hang on the ptraced
+	// process. Best-effort Kill at the end matches the historical teardown.
+	cmd, stdout := startFixtureWithStdoutPipeCleanup(t, false, fixture)
 
 	// Read the port from stdout in a goroutine
 	var port int
@@ -8545,8 +8566,8 @@ func TestBreakpointAfterDisconnect(t *testing.T) {
 	defer resp.Body.Close()
 
 	time.Sleep(200 * time.Millisecond)
-
-	cmd.Process.Kill()
+	runtime.KeepAlive(stdout)
+	_ = cmd.Process.Kill()
 }
 
 func TestRedirects(t *testing.T) {
