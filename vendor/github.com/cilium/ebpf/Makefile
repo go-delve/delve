@@ -1,33 +1,51 @@
 # The development version of clang is distributed as the 'clang' binary,
 # while stable/released versions have a version number attached.
 # Pin the default clang to a stable version.
-CLANG ?= clang-14
-STRIP ?= llvm-strip-14
-OBJCOPY ?= llvm-objcopy-14
-CFLAGS := -O2 -g -Wall -Werror $(CFLAGS)
+CLANG ?= clang-22
+STRIP ?= llvm-strip-22
+OBJCOPY ?= llvm-objcopy-22
+CFLAGS := -O2 -g -Wall -Werror -mcpu=v2 $(CFLAGS)
 
 CI_KERNEL_URL ?= https://github.com/cilium/ci-kernels/raw/master/
 
 # Obtain an absolute path to the directory of the Makefile.
 # Assume the Makefile is in the root of the repository.
 REPODIR := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
-UIDGID := $(shell stat -c '%u:%g' ${REPODIR})
 
 # Prefer podman if installed, otherwise use docker.
 # Note: Setting the var at runtime will always override.
-CONTAINER_ENGINE ?= $(if $(shell command -v podman), podman, docker)
-CONTAINER_RUN_ARGS ?= $(if $(filter ${CONTAINER_ENGINE}, podman), --log-driver=none, --user "${UIDGID}")
+CONTAINER_ENGINE ?= $(if $(shell command -v podman),podman,docker)
+
+# Configure container runtime arguments based on the container engine.
+CONTAINER_RUN_ARGS := \
+	--env MAKEFLAGS \
+	--env BPF2GO_CC="$(CLANG)" \
+	--env BPF2GO_CFLAGS="$(CFLAGS)" \
+	--env HOME=/tmp \
+	-v "${REPODIR}":/ebpf -w /ebpf \
+	-v "$(shell go env GOCACHE)":/tmp/.cache/go-build \
+	-v "$(shell go env GOPATH)":/go \
+	-v "$(shell go env GOMODCACHE)":/go/pkg/mod
+
+ifeq ($(CONTAINER_ENGINE), podman)
+CONTAINER_RUN_ARGS += --log-driver=none --security-opt label=disable
+else
+CONTAINER_RUN_ARGS += --user "$(shell stat -c '%u:%g' ${REPODIR})"
+endif
 
 IMAGE := $(shell cat ${REPODIR}/testdata/docker/IMAGE)
 VERSION := $(shell cat ${REPODIR}/testdata/docker/VERSION)
 
+TARGETS_EL := \
+	testdata/linked1 \
+	testdata/linked2 \
+	testdata/linked
 
-# clang <8 doesn't tag relocs properly (STT_NOTYPE)
-# clang 9 is the first version emitting BTF
 TARGETS := \
-	testdata/loader-clang-7 \
-	testdata/loader-clang-9 \
+	testdata/loader-clang-14 \
+	testdata/loader-clang-17 \
 	testdata/loader-$(CLANG) \
+	testdata/loader_nobtf \
 	testdata/manyprogs \
 	testdata/btf_map_init \
 	testdata/invalid_map \
@@ -36,80 +54,96 @@ TARGETS := \
 	testdata/invalid_btf_map_init \
 	testdata/strings \
 	testdata/freplace \
+	testdata/fentry_fexit \
 	testdata/iproute2_map_compat \
 	testdata/map_spin_lock \
 	testdata/subprog_reloc \
 	testdata/fwd_decl \
 	testdata/kconfig \
-	testdata/kconfig_config \
+	testdata/ksym \
 	testdata/kfunc \
 	testdata/invalid-kfunc \
 	testdata/kfunc-kmod \
+	testdata/constants \
+	testdata/errors \
+	testdata/variables \
+	testdata/arena \
+	testdata/struct_ops \
 	btf/testdata/relocs \
 	btf/testdata/relocs_read \
 	btf/testdata/relocs_read_tgt \
+	btf/testdata/relocs_enum \
+	btf/testdata/tags \
 	cmd/bpf2go/testdata/minimal
 
-.PHONY: all clean container-all container-shell generate
+HEADERS := $(wildcard testdata/*.h)
 
-.DEFAULT_TARGET = container-all
+.PHONY: all clean godirs container-all container-shell generate format
+
+.DEFAULT_GOAL = container-all
+
+# Make sure Go-related dirs exist before starting containerized builds,
+# otherwise podman will fail to start.
+godirs:
+	mkdir -p $(shell go env GOCACHE) $(shell go env GOPATH) $(shell go env GOMODCACHE)
 
 # Build all ELF binaries using a containerized LLVM toolchain.
-container-all:
+container-all: godirs
 	+${CONTAINER_ENGINE} run --rm -ti ${CONTAINER_RUN_ARGS} \
-		-v "${REPODIR}":/ebpf -w /ebpf --env MAKEFLAGS \
-		--env CFLAGS="-fdebug-prefix-map=/ebpf=." \
-		--env HOME="/tmp" \
 		"${IMAGE}:${VERSION}" \
-		make all
+		$(MAKE) all
 
 # (debug) Drop the user into a shell inside the container as root.
-container-shell:
-	${CONTAINER_ENGINE} run --rm -ti \
-		-v "${REPODIR}":/ebpf -w /ebpf \
+# Set BPF2GO_ envs to make 'make generate' just work.
+container-shell: godirs
+	${CONTAINER_ENGINE} run --rm -ti ${CONTAINER_RUN_ARGS} \
 		"${IMAGE}:${VERSION}"
 
 clean:
-	-$(RM) testdata/*.elf
-	-$(RM) btf/testdata/*.elf
+	find "$(CURDIR)" -name "*.elf" -delete
+	find "$(CURDIR)" -name "*.o" -delete
 
 format:
 	find . -type f -name "*.c" | xargs clang-format -i
 
-all: format $(addsuffix -el.elf,$(TARGETS)) $(addsuffix -eb.elf,$(TARGETS)) generate
+all: format testdata update-external-deps
 	ln -srf testdata/loader-$(CLANG)-el.elf testdata/loader-el.elf
 	ln -srf testdata/loader-$(CLANG)-eb.elf testdata/loader-eb.elf
+	$(MAKE) generate
 
-# $BPF_CLANG is used in go:generate invocations.
-generate: export BPF_CLANG := $(CLANG)
-generate: export BPF_CFLAGS := $(CFLAGS)
 generate:
-	go generate ./...
+	go generate -run "gentypes" ./...
+	go generate -run "stringer" ./...
+	go generate -skip "(gentypes|stringer)" ./...
 
-testdata/loader-%-el.elf: testdata/loader.c
+testdata: $(addsuffix -el.elf,$(TARGETS)) $(addsuffix -eb.elf,$(TARGETS)) $(addsuffix -el.elf,$(TARGETS_EL))
+
+testdata/loader-%-el.elf: testdata/loader.c $(HEADERS)
 	$* $(CFLAGS) -target bpfel -c $< -o $@
 	$(STRIP) -g $@
 
-testdata/loader-%-eb.elf: testdata/loader.c
+testdata/loader-%-eb.elf: testdata/loader.c $(HEADERS)
 	$* $(CFLAGS) -target bpfeb -c $< -o $@
 	$(STRIP) -g $@
 
-%-el.elf: %.c
+testdata/loader_nobtf-el.elf: testdata/loader.c $(HEADERS)
+	$(CLANG) $(CFLAGS) -g0 -D__NOBTF__ -target bpfel -c $< -o $@
+
+testdata/loader_nobtf-eb.elf: testdata/loader.c $(HEADERS)
+	$(CLANG) $(CFLAGS) -g0 -D__NOBTF__ -target bpfeb -c $< -o $@
+
+%-el.elf: %.c $(HEADERS)
 	$(CLANG) $(CFLAGS) -target bpfel -c $< -o $@
 	$(STRIP) -g $@
 
-%-eb.elf : %.c
+%-eb.elf: %.c $(HEADERS)
 	$(CLANG) $(CFLAGS) -target bpfeb -c $< -o $@
 	$(STRIP) -g $@
 
-.PHONY: generate-btf
-generate-btf: KERNEL_VERSION?=5.19
-generate-btf:
-	$(eval TMP := $(shell mktemp -d))
-	curl -fL "$(CI_KERNEL_URL)/linux-$(KERNEL_VERSION).bz" -o "$(TMP)/bzImage"
-	/lib/modules/$(uname -r)/build/scripts/extract-vmlinux "$(TMP)/bzImage" > "$(TMP)/vmlinux"
-	$(OBJCOPY) --dump-section .BTF=/dev/stdout "$(TMP)/vmlinux" /dev/null | gzip > "btf/testdata/vmlinux.btf.gz"
-	curl -fL "$(CI_KERNEL_URL)/linux-$(KERNEL_VERSION)-selftests-bpf.tgz" -o "$(TMP)/selftests.tgz"
-	tar -xf "$(TMP)/selftests.tgz" --to-stdout tools/testing/selftests/bpf/bpf_testmod/bpf_testmod.ko | \
-		$(OBJCOPY) --dump-section .BTF="btf/testdata/btf_testmod.btf" - /dev/null
-	$(RM) -r "$(TMP)"
+testdata/linked-el.elf: testdata/linked1-el.elf testdata/linked2-el.elf
+	bpftool gen object $@ $^
+
+.PHONY: update-external-deps
+update-external-deps:
+	./scripts/update-kernel-deps.sh
+	./scripts/update-efw-deps.sh

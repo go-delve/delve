@@ -1,20 +1,24 @@
 package btf
 
 import (
-	"bufio"
 	"bytes"
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"strings"
-
-	"golang.org/x/exp/maps"
+	"sync"
 )
 
+// stringTable contains a sequence of null-terminated strings.
+//
+// It is safe for concurrent use.
 type stringTable struct {
-	base    *stringTable
-	offsets []uint32
-	strings []string
+	base  *stringTable
+	bytes []byte
+
+	mu    sync.Mutex
+	cache map[uint32]string
 }
 
 // sizedReader is implemented by bytes.Reader, io.SectionReader, strings.Reader, etc.
@@ -24,110 +28,103 @@ type sizedReader interface {
 }
 
 func readStringTable(r sizedReader, base *stringTable) (*stringTable, error) {
+	bytes := make([]byte, r.Size())
+	if _, err := io.ReadFull(r, bytes); err != nil {
+		return nil, err
+	}
+
+	return newStringTable(bytes, base)
+}
+
+func newStringTable(bytes []byte, base *stringTable) (*stringTable, error) {
 	// When parsing split BTF's string table, the first entry offset is derived
 	// from the last entry offset of the base BTF.
 	firstStringOffset := uint32(0)
 	if base != nil {
-		idx := len(base.offsets) - 1
-		firstStringOffset = base.offsets[idx] + uint32(len(base.strings[idx])) + 1
+		firstStringOffset = uint32(len(base.bytes))
 	}
 
-	// Derived from vmlinux BTF.
-	const averageStringLength = 16
-
-	n := int(r.Size() / averageStringLength)
-	offsets := make([]uint32, 0, n)
-	strings := make([]string, 0, n)
-
-	offset := firstStringOffset
-	scanner := bufio.NewScanner(r)
-	scanner.Split(splitNull)
-	for scanner.Scan() {
-		str := scanner.Text()
-		offsets = append(offsets, offset)
-		strings = append(strings, str)
-		offset += uint32(len(str)) + 1
-	}
-	if err := scanner.Err(); err != nil {
-		return nil, err
-	}
-
-	if len(strings) == 0 {
-		return nil, errors.New("string table is empty")
-	}
-
-	if firstStringOffset == 0 && strings[0] != "" {
-		return nil, errors.New("first item in string table is non-empty")
-	}
-
-	return &stringTable{base, offsets, strings}, nil
-}
-
-func splitNull(data []byte, atEOF bool) (advance int, token []byte, err error) {
-	i := bytes.IndexByte(data, 0)
-	if i == -1 {
-		if atEOF && len(data) > 0 {
-			return 0, nil, errors.New("string table isn't null terminated")
+	if len(bytes) > 0 {
+		if bytes[len(bytes)-1] != 0 {
+			return nil, errors.New("string table isn't null terminated")
 		}
-		return 0, nil, nil
+
+		if firstStringOffset == 0 && bytes[0] != 0 {
+			return nil, errors.New("first item in string table is non-empty")
+		}
 	}
 
-	return i + 1, data[:i], nil
+	return &stringTable{base: base, bytes: bytes}, nil
 }
 
 func (st *stringTable) Lookup(offset uint32) (string, error) {
-	if st.base != nil && offset <= st.base.offsets[len(st.base.offsets)-1] {
-		return st.base.lookup(offset)
-	}
-	return st.lookup(offset)
-}
-
-func (st *stringTable) lookup(offset uint32) (string, error) {
-	i := search(st.offsets, offset)
-	if i == len(st.offsets) || st.offsets[i] != offset {
-		return "", fmt.Errorf("offset %d isn't start of a string", offset)
+	// Fast path: zero offset is the empty string, looked up frequently.
+	if offset == 0 {
+		return "", nil
 	}
 
-	return st.strings[i], nil
+	b, err := st.lookupSlow(offset)
+	return string(b), err
 }
 
-func (st *stringTable) Marshal(w io.Writer) error {
-	for _, str := range st.strings {
-		_, err := io.WriteString(w, str)
-		if err != nil {
-			return err
+func (st *stringTable) LookupBytes(offset uint32) ([]byte, error) {
+	// Fast path: zero offset is the empty string, looked up frequently.
+	if offset == 0 {
+		return nil, nil
+	}
+
+	return st.lookupSlow(offset)
+}
+
+func (st *stringTable) lookupSlow(offset uint32) ([]byte, error) {
+	if st.base != nil {
+		n := uint32(len(st.base.bytes))
+		if offset < n {
+			return st.base.lookupSlow(offset)
 		}
-		_, err = w.Write([]byte{0})
-		if err != nil {
-			return err
-		}
+		offset -= n
 	}
-	return nil
+
+	if offset > uint32(len(st.bytes)) {
+		return nil, fmt.Errorf("offset %d is out of bounds of string table", offset)
+	}
+
+	if offset > 0 && st.bytes[offset-1] != 0 {
+		return nil, fmt.Errorf("offset %d is not the beginning of a string", offset)
+	}
+
+	i := bytes.IndexByte(st.bytes[offset:], 0)
+	if i == -1 {
+		return nil, fmt.Errorf("string at offset %d is not null terminated", offset)
+	}
+	return st.bytes[offset : offset+uint32(i)], nil
 }
 
-// Num returns the number of strings in the table.
-func (st *stringTable) Num() int {
-	return len(st.strings)
-}
-
-// search is a copy of sort.Search specialised for uint32.
-//
-// Licensed under https://go.dev/LICENSE
-func search(ints []uint32, needle uint32) int {
-	// Define f(-1) == false and f(n) == true.
-	// Invariant: f(i-1) == false, f(j) == true.
-	i, j := 0, len(ints)
-	for i < j {
-		h := int(uint(i+j) >> 1) // avoid overflow when computing h
-		// i ≤ h < j
-		if !(ints[h] >= needle) {
-			i = h + 1 // preserves f(i-1) == false
-		} else {
-			j = h // preserves f(j) == true
-		}
+// LookupCache returns the string at the given offset, caching the result
+// for future lookups.
+func (cst *stringTable) LookupCached(offset uint32) (string, error) {
+	// Fast path: zero offset is the empty string, looked up frequently.
+	if offset == 0 {
+		return "", nil
 	}
-	// i == j, f(i-1) == false, and f(j) (= f(i)) == true  =>  answer is i.
-	return i
+
+	cst.mu.Lock()
+	defer cst.mu.Unlock()
+
+	if str, ok := cst.cache[offset]; ok {
+		return str, nil
+	}
+
+	str, err := cst.Lookup(offset)
+	if err != nil {
+		return "", err
+	}
+
+	if cst.cache == nil {
+		cst.cache = make(map[uint32]string)
+	}
+	cst.cache[offset] = str
+	return str, nil
 }
 
 // stringTableBuilder builds BTF string tables.

@@ -3,15 +3,30 @@ package internal
 import (
 	"errors"
 	"fmt"
+	"runtime"
 	"sync"
+
+	"github.com/cilium/ebpf/internal/platform"
 )
 
-// ErrNotSupported indicates that a feature is not supported by the current kernel.
+// ErrNotSupported indicates that a feature is not supported.
 var ErrNotSupported = errors.New("not supported")
+
+// ErrNotSupportedOnOS indicates that a feature is not supported on the current
+// operating system.
+var ErrNotSupportedOnOS = fmt.Errorf("%w on %s", ErrNotSupported, runtime.GOOS)
+
+// ErrRestrictedKernel is returned when kernel address information is restricted
+// by kernel.kptr_restrict and/or net.core.bpf_jit_harden sysctls.
+var ErrRestrictedKernel = errors.New("restricted by kernel.kptr_restrict and/or net.core.bpf_jit_harden sysctls")
 
 // UnsupportedFeatureError is returned by FeatureTest() functions.
 type UnsupportedFeatureError struct {
-	// The minimum Linux mainline version required for this feature.
+	// The minimum version required for this feature.
+	//
+	// On Linux this refers to the mainline kernel version, on other platforms
+	// to the version of the runtime.
+	//
 	// Used for the error string, and for sanity checking during testing.
 	MinimumVersion Version
 
@@ -37,7 +52,7 @@ func (ufe *UnsupportedFeatureError) Is(target error) bool {
 type FeatureTest struct {
 	// The name of the feature being detected.
 	Name string
-	// Version in in the form Major.Minor[.Patch].
+	// Version in the form Major.Minor[.Patch].
 	Version string
 	// The feature test itself.
 	Fn FeatureTestFn
@@ -58,7 +73,25 @@ type FeatureTest struct {
 type FeatureTestFn func() error
 
 // NewFeatureTest is a convenient way to create a single [FeatureTest].
-func NewFeatureTest(name, version string, fn FeatureTestFn) func() error {
+//
+// versions specifies in which version of a BPF runtime a feature appeared.
+// The format is "GOOS:Major.Minor[.Patch]". GOOS may be omitted when targeting
+// Linux. Returns [ErrNotSupportedOnOS] if there is no version specified for the
+// current OS.
+func NewFeatureTest(name string, fn FeatureTestFn, versions ...string) func() error {
+	version, err := platform.SelectVersion(versions)
+	if err != nil {
+		return func() error { return err }
+	}
+
+	if version == "" {
+		return func() error {
+			// We don't return an UnsupportedFeatureError here, since that will
+			// trigger version checks which don't make sense.
+			return fmt.Errorf("%s: %w", name, ErrNotSupportedOnOS)
+		}
+	}
+
 	ft := &FeatureTest{
 		Name:    name,
 		Version: version,
@@ -132,10 +165,16 @@ type FeatureMatrix[K comparable] map[K]*FeatureTest
 // Result returns the outcome of the feature test for the given key.
 //
 // It's safe to call this function concurrently.
+//
+// Always returns [ErrNotSupportedOnOS] on Windows.
 func (fm FeatureMatrix[K]) Result(key K) error {
 	ft, ok := fm[key]
 	if !ok {
 		return fmt.Errorf("no feature probe for %v", key)
+	}
+
+	if platform.IsWindows {
+		return fmt.Errorf("%s: %w", ft.Name, ErrNotSupportedOnOS)
 	}
 
 	return ft.execute()
@@ -158,6 +197,10 @@ func NewFeatureCache[K comparable](newTest func(K) *FeatureTest) *FeatureCache[K
 }
 
 func (fc *FeatureCache[K]) Result(key K) error {
+	if platform.IsWindows {
+		return fmt.Errorf("feature probe for %v: %w", key, ErrNotSupportedOnOS)
+	}
+
 	// NB: Executing the feature test happens without fc.mu taken.
 	return fc.retrieve(key).execute()
 }

@@ -2,140 +2,158 @@ package btf
 
 import (
 	"fmt"
-
-	"github.com/cilium/ebpf/internal"
+	"iter"
 )
 
 // Functions to traverse a cyclic graph of types. The below was very useful:
 // https://eli.thegreenplace.net/2015/directed-graph-traversal-orderings-and-applications-to-data-flow-analysis/#post-order-and-reverse-post-order
 
-type postorderIterator struct {
-	// Iteration skips types for which this function returns true.
-	skip func(Type) bool
-	// The root type. May be nil if skip(root) is true.
-	root Type
-
-	// Contains types which need to be either walked or yielded.
-	types typeDeque
-	// Contains a boolean whether the type has been walked or not.
-	walked internal.Deque[bool]
-	// The set of types which has been pushed onto types.
-	pushed map[Type]struct{}
-
-	// The current type. Only valid after a call to Next().
-	Type Type
+// postorder yields all types reachable from root in post order.
+func postorder(root Type, visited map[Type]struct{}) iter.Seq[Type] {
+	return func(yield func(Type) bool) {
+		visitInPostorder(root, visited, yield)
+	}
 }
 
-// postorderTraversal iterates all types reachable from root by visiting the
-// leaves of the graph first.
-//
-// Types for which skip returns true are ignored. skip may be nil.
-func postorderTraversal(root Type, skip func(Type) (skip bool)) postorderIterator {
-	// Avoid allocations for the common case of a skipped root.
-	if skip != nil && skip(root) {
-		return postorderIterator{}
+// visitInPostorder is a separate function to avoid arguments escaping
+// to the heap. Don't change the setup without re-running the benchmarks.
+func visitInPostorder(root Type, visited map[Type]struct{}, yield func(typ Type) bool) bool {
+	if _, ok := visited[root]; ok {
+		return true
+	}
+	if visited == nil {
+		visited = make(map[Type]struct{})
+	}
+	visited[root] = struct{}{}
+
+	for child := range children(root) {
+		if !visitInPostorder(*child, visited, yield) {
+			return false
+		}
 	}
 
-	po := postorderIterator{root: root, skip: skip}
-	walkType(root, po.push)
-
-	return po
+	return yield(root)
 }
 
-func (po *postorderIterator) push(t *Type) {
-	if _, ok := po.pushed[*t]; ok || *t == po.root {
-		return
-	}
-
-	if po.skip != nil && po.skip(*t) {
-		return
-	}
-
-	if po.pushed == nil {
-		// Lazily allocate pushed to avoid an allocation for Types without children.
-		po.pushed = make(map[Type]struct{})
-	}
-
-	po.pushed[*t] = struct{}{}
-	po.types.Push(t)
-	po.walked.Push(false)
-}
-
-// Next returns true if there is another Type to traverse.
-func (po *postorderIterator) Next() bool {
-	for !po.types.Empty() {
-		t := po.types.Pop()
-
-		if !po.walked.Pop() {
-			// Push the type again, so that we re-evaluate it in done state
-			// after all children have been handled.
-			po.types.Push(t)
-			po.walked.Push(true)
-
-			// Add all direct children to todo.
-			walkType(*t, po.push)
-		} else {
-			// We've walked this type previously, so we now know that all
-			// children have been handled.
-			po.Type = *t
-			return true
+// children yields all direct descendants of typ.
+func children(typ Type) iter.Seq[*Type] {
+	return func(yield func(*Type) bool) {
+		// Explicitly type switch on the most common types to allow the inliner to
+		// do its work. This avoids allocating intermediate slices from walk() on
+		// the heap.
+		var tags []string
+		switch v := typ.(type) {
+		case *Void, *Int, *Enum, *Fwd, *Float, *declTag:
+			// No children to traverse.
+			// declTags is declared as a leaf type since it's parsed into .Tags fields of other types
+			// during unmarshaling.
+		case *Pointer:
+			if !yield(&v.Target) {
+				return
+			}
+		case *Array:
+			if !yield(&v.Index) {
+				return
+			}
+			if !yield(&v.Type) {
+				return
+			}
+		case *Struct:
+			for i := range v.Members {
+				if !yield(&v.Members[i].Type) {
+					return
+				}
+				for _, t := range v.Members[i].Tags {
+					var tag Type = &declTag{v, t, i}
+					if !yield(&tag) {
+						return
+					}
+				}
+			}
+			tags = v.Tags
+		case *Union:
+			for i := range v.Members {
+				if !yield(&v.Members[i].Type) {
+					return
+				}
+				for _, t := range v.Members[i].Tags {
+					var tag Type = &declTag{v, t, i}
+					if !yield(&tag) {
+						return
+					}
+				}
+			}
+			tags = v.Tags
+		case *Typedef:
+			if !yield(&v.Type) {
+				return
+			}
+			tags = v.Tags
+		case *Volatile:
+			if !yield(&v.Type) {
+				return
+			}
+		case *Const:
+			if !yield(&v.Type) {
+				return
+			}
+		case *Restrict:
+			if !yield(&v.Type) {
+				return
+			}
+		case *Func:
+			if !yield(&v.Type) {
+				return
+			}
+			if fp, ok := v.Type.(*FuncProto); ok {
+				for i := range fp.Params {
+					if len(v.ParamTags) <= i {
+						continue
+					}
+					for _, t := range v.ParamTags[i] {
+						var tag Type = &declTag{v, t, i}
+						if !yield(&tag) {
+							return
+						}
+					}
+				}
+			}
+			tags = v.Tags
+		case *FuncProto:
+			if !yield(&v.Return) {
+				return
+			}
+			for i := range v.Params {
+				if !yield(&v.Params[i].Type) {
+					return
+				}
+			}
+		case *Var:
+			if !yield(&v.Type) {
+				return
+			}
+			tags = v.Tags
+		case *Datasec:
+			for i := range v.Vars {
+				if !yield(&v.Vars[i].Type) {
+					return
+				}
+			}
+		case *TypeTag:
+			if !yield(&v.Type) {
+				return
+			}
+		case *cycle:
+			// cycle has children, but we ignore them deliberately.
+		default:
+			panic(fmt.Sprintf("don't know how to walk Type %T", v))
 		}
-	}
 
-	// Only return root once.
-	po.Type, po.root = po.root, nil
-	return po.Type != nil
-}
-
-// walkType calls fn on each child of typ.
-func walkType(typ Type, fn func(*Type)) {
-	// Explicitly type switch on the most common types to allow the inliner to
-	// do its work. This avoids allocating intermediate slices from walk() on
-	// the heap.
-	switch v := typ.(type) {
-	case *Void, *Int, *Enum, *Fwd, *Float:
-		// No children to traverse.
-	case *Pointer:
-		fn(&v.Target)
-	case *Array:
-		fn(&v.Index)
-		fn(&v.Type)
-	case *Struct:
-		for i := range v.Members {
-			fn(&v.Members[i].Type)
+		for _, t := range tags {
+			var tag Type = &declTag{typ, t, -1}
+			if !yield(&tag) {
+				return
+			}
 		}
-	case *Union:
-		for i := range v.Members {
-			fn(&v.Members[i].Type)
-		}
-	case *Typedef:
-		fn(&v.Type)
-	case *Volatile:
-		fn(&v.Type)
-	case *Const:
-		fn(&v.Type)
-	case *Restrict:
-		fn(&v.Type)
-	case *Func:
-		fn(&v.Type)
-	case *FuncProto:
-		fn(&v.Return)
-		for i := range v.Params {
-			fn(&v.Params[i].Type)
-		}
-	case *Var:
-		fn(&v.Type)
-	case *Datasec:
-		for i := range v.Vars {
-			fn(&v.Vars[i].Type)
-		}
-	case *declTag:
-		fn(&v.Type)
-	case *typeTag:
-		fn(&v.Type)
-	case *cycle:
-		// cycle has children, but we ignore them deliberately.
-	default:
-		panic(fmt.Sprintf("don't know how to walk Type %T", v))
 	}
 }

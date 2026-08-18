@@ -2,7 +2,6 @@ package sys
 
 import (
 	"runtime"
-	"syscall"
 	"unsafe"
 
 	"github.com/cilium/ebpf/internal/unix"
@@ -11,37 +10,7 @@ import (
 // ENOTSUPP is a Linux internal error code that has leaked into UAPI.
 //
 // It is not the same as ENOTSUP or EOPNOTSUPP.
-var ENOTSUPP = syscall.Errno(524)
-
-// BPF wraps SYS_BPF.
-//
-// Any pointers contained in attr must use the Pointer type from this package.
-func BPF(cmd Cmd, attr unsafe.Pointer, size uintptr) (uintptr, error) {
-	// Prevent the Go profiler from repeatedly interrupting the verifier,
-	// which could otherwise lead to a livelock due to receiving EAGAIN.
-	if cmd == BPF_PROG_LOAD || cmd == BPF_PROG_RUN {
-		maskProfilerSignal()
-		defer unmaskProfilerSignal()
-	}
-
-	for {
-		r1, _, errNo := unix.Syscall(unix.SYS_BPF, uintptr(cmd), uintptr(attr), size)
-		runtime.KeepAlive(attr)
-
-		// As of ~4.20 the verifier can be interrupted by a signal,
-		// and returns EAGAIN in that case.
-		if errNo == unix.EAGAIN && cmd == BPF_PROG_LOAD {
-			continue
-		}
-
-		var err error
-		if errNo != 0 {
-			err = wrappedErrno{errNo}
-		}
-
-		return r1, err
-	}
-}
+const ENOTSUPP = unix.Errno(524)
 
 // Info is implemented by all structs that can be passed to the ObjInfo syscall.
 //
@@ -49,6 +18,7 @@ func BPF(cmd Cmd, attr unsafe.Pointer, size uintptr) (uintptr, error) {
 //	ProgInfo
 //	LinkInfo
 //	BtfInfo
+//	TokenInfo
 type Info interface {
 	info() (unsafe.Pointer, uint32)
 }
@@ -71,21 +41,87 @@ func (i *LinkInfo) info() (unsafe.Pointer, uint32) {
 	return unsafe.Pointer(i), uint32(unsafe.Sizeof(*i))
 }
 
+func (i *TracingLinkInfo) info() (unsafe.Pointer, uint32) {
+	return unsafe.Pointer(i), uint32(unsafe.Sizeof(*i))
+}
+
+func (i *CgroupLinkInfo) info() (unsafe.Pointer, uint32) {
+	return unsafe.Pointer(i), uint32(unsafe.Sizeof(*i))
+}
+
+func (i *NetNsLinkInfo) info() (unsafe.Pointer, uint32) {
+	return unsafe.Pointer(i), uint32(unsafe.Sizeof(*i))
+}
+
+func (i *XDPLinkInfo) info() (unsafe.Pointer, uint32) {
+	return unsafe.Pointer(i), uint32(unsafe.Sizeof(*i))
+}
+
+func (i *TcxLinkInfo) info() (unsafe.Pointer, uint32) {
+	return unsafe.Pointer(i), uint32(unsafe.Sizeof(*i))
+}
+
+func (i *NetfilterLinkInfo) info() (unsafe.Pointer, uint32) {
+	return unsafe.Pointer(i), uint32(unsafe.Sizeof(*i))
+}
+
+func (i *NetkitLinkInfo) info() (unsafe.Pointer, uint32) {
+	return unsafe.Pointer(i), uint32(unsafe.Sizeof(*i))
+}
+
+func (i *KprobeMultiLinkInfo) info() (unsafe.Pointer, uint32) {
+	return unsafe.Pointer(i), uint32(unsafe.Sizeof(*i))
+}
+
+func (i *UprobeMultiLinkInfo) info() (unsafe.Pointer, uint32) {
+	return unsafe.Pointer(i), uint32(unsafe.Sizeof(*i))
+}
+
+func (i *RawTracepointLinkInfo) info() (unsafe.Pointer, uint32) {
+	return unsafe.Pointer(i), uint32(unsafe.Sizeof(*i))
+}
+
+func (i *KprobeLinkInfo) info() (unsafe.Pointer, uint32) {
+	return unsafe.Pointer(i), uint32(unsafe.Sizeof(*i))
+}
+
+func (i *UprobeLinkInfo) info() (unsafe.Pointer, uint32) {
+	return unsafe.Pointer(i), uint32(unsafe.Sizeof(*i))
+}
+
+func (i *TracepointLinkInfo) info() (unsafe.Pointer, uint32) {
+	return unsafe.Pointer(i), uint32(unsafe.Sizeof(*i))
+}
+
+func (i *EventLinkInfo) info() (unsafe.Pointer, uint32) {
+	return unsafe.Pointer(i), uint32(unsafe.Sizeof(*i))
+}
+
 var _ Info = (*BtfInfo)(nil)
 
 func (i *BtfInfo) info() (unsafe.Pointer, uint32) {
 	return unsafe.Pointer(i), uint32(unsafe.Sizeof(*i))
 }
 
+func (i *PerfEventLinkInfo) info() (unsafe.Pointer, uint32) {
+	return unsafe.Pointer(i), uint32(unsafe.Sizeof(*i))
+}
+
+var _ Info = (*TokenInfo)(nil)
+
+func (i *TokenInfo) info() (unsafe.Pointer, uint32) {
+	return unsafe.Pointer(i), uint32(unsafe.Sizeof(*i))
+}
+
 // ObjInfo retrieves information about a BPF Fd.
 //
-// info may be one of MapInfo, ProgInfo, LinkInfo and BtfInfo.
+// info may be one of MapInfo, ProgInfo, LinkInfo, BtfInfo and TokenInfo.
 func ObjInfo(fd *FD, info Info) error {
 	ptr, len := info.info()
 	err := ObjGetInfoByFd(&ObjGetInfoByFdAttr{
 		BpfFd:   fd.Uint(),
 		InfoLen: len,
-		Info:    NewPointer(ptr),
+		Info:    UnsafePointer(ptr),
 	})
 	runtime.KeepAlive(fd)
 	return err
@@ -93,12 +129,12 @@ func ObjInfo(fd *FD, info Info) error {
 
 // BPFObjName is a null-terminated string made up of
 // 'A-Za-z0-9_' characters.
-type ObjName [unix.BPF_OBJ_NAME_LEN]byte
+type ObjName [BPF_OBJ_NAME_LEN]byte
 
 // NewObjName truncates the result if it is too long.
 func NewObjName(name string) ObjName {
 	var result ObjName
-	copy(result[:unix.BPF_OBJ_NAME_LEN-1], name)
+	copy(result[:BPF_OBJ_NAME_LEN-1], name)
 	return result
 }
 
@@ -111,6 +147,12 @@ const (
 	BPF_LOG_STATS
 )
 
+// MapID uniquely identifies a bpf_map.
+type MapID uint32
+
+// ProgramID uniquely identifies a bpf_map.
+type ProgramID uint32
+
 // LinkID uniquely identifies a bpf_link.
 type LinkID uint32
 
@@ -120,33 +162,31 @@ type BTFID uint32
 // TypeID identifies a type in a BTF blob.
 type TypeID uint32
 
-// MapFlags control map behaviour.
-type MapFlags uint32
-
-//go:generate stringer -type MapFlags
-
+// Flags used by bpf_mprog.
 const (
-	BPF_F_NO_PREALLOC MapFlags = 1 << iota
-	BPF_F_NO_COMMON_LRU
-	BPF_F_NUMA_NODE
-	BPF_F_RDONLY
-	BPF_F_WRONLY
-	BPF_F_STACK_BUILD_ID
-	BPF_F_ZERO_SEED
-	BPF_F_RDONLY_PROG
-	BPF_F_WRONLY_PROG
-	BPF_F_CLONE
-	BPF_F_MMAPABLE
-	BPF_F_PRESERVE_ELEMS
-	BPF_F_INNER_MAP
+	BPF_F_REPLACE = 1 << (iota + 2)
+	BPF_F_BEFORE
+	BPF_F_AFTER
+	BPF_F_ID
+	BPF_F_LINK_MPROG = 1 << 13 // aka BPF_F_LINK
 )
 
-// wrappedErrno wraps syscall.Errno to prevent direct comparisons with
+// Flags used by BPF_PROG_LOAD.
+const (
+	BPF_F_SLEEPABLE          = 1 << 4
+	BPF_F_XDP_HAS_FRAGS      = 1 << 5
+	BPF_F_XDP_DEV_BOUND_ONLY = 1 << 6
+)
+
+const BPF_TAG_SIZE = 8
+const BPF_OBJ_NAME_LEN = 16
+
+// wrappedErrno wraps [unix.Errno] to prevent direct comparisons with
 // syscall.E* or unix.E* constants.
 //
 // You should never export an error of this type.
 type wrappedErrno struct {
-	syscall.Errno
+	unix.Errno
 }
 
 func (we wrappedErrno) Unwrap() error {
@@ -162,10 +202,10 @@ func (we wrappedErrno) Error() string {
 
 type syscallError struct {
 	error
-	errno syscall.Errno
+	errno unix.Errno
 }
 
-func Error(err error, errno syscall.Errno) error {
+func Error(err error, errno unix.Errno) error {
 	return &syscallError{err, errno}
 }
 

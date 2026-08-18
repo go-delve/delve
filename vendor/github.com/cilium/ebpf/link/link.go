@@ -1,15 +1,19 @@
 package link
 
 import (
-	"bytes"
-	"encoding/binary"
+	"errors"
 	"fmt"
+	"os"
 
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/btf"
 	"github.com/cilium/ebpf/internal"
 	"github.com/cilium/ebpf/internal/sys"
+	"github.com/cilium/ebpf/internal/unix"
 )
+
+// Type is the kind of link.
+type Type = sys.LinkType
 
 var ErrNotSupported = internal.ErrNotSupported
 
@@ -37,6 +41,11 @@ type Link interface {
 	// not called.
 	Close() error
 
+	// Detach the link from its corresponding attachment point.
+	//
+	// May return an error wrapping ErrNotSupported.
+	Detach() error
+
 	// Info returns metadata on a link.
 	//
 	// May return an error wrapping ErrNotSupported.
@@ -46,10 +55,10 @@ type Link interface {
 	isLink()
 }
 
-// NewLinkFromFD creates a link from a raw fd.
+// NewFromFD creates a link from a raw fd.
 //
 // You should not use fd after calling this function.
-func NewLinkFromFD(fd int) (Link, error) {
+func NewFromFD(fd int) (Link, error) {
 	sysFD, err := sys.NewFD(fd)
 	if err != nil {
 		return nil, err
@@ -58,7 +67,22 @@ func NewLinkFromFD(fd int) (Link, error) {
 	return wrapRawLink(&RawLink{fd: sysFD})
 }
 
-// LoadPinnedLink loads a link that was persisted into a bpffs.
+// NewFromID returns the link associated with the given id.
+//
+// Returns ErrNotExist if there is no link with the given id.
+func NewFromID(id ID) (Link, error) {
+	getFdAttr := &sys.LinkGetFdByIdAttr{Id: id}
+	fd, err := sys.LinkGetFdById(getFdAttr)
+	if err != nil {
+		return nil, fmt.Errorf("get link fd from ID %d: %w", id, err)
+	}
+
+	return wrapRawLink(&RawLink{fd, ""})
+}
+
+// LoadPinnedLink loads a Link from a pin (file) on the BPF virtual filesystem.
+//
+// Requires at least Linux 5.7.
 func LoadPinnedLink(fileName string, opts *ebpf.LoadPinOptions) (Link, error) {
 	raw, err := loadPinnedRawLink(fileName, opts)
 	if err != nil {
@@ -66,41 +90,6 @@ func LoadPinnedLink(fileName string, opts *ebpf.LoadPinOptions) (Link, error) {
 	}
 
 	return wrapRawLink(raw)
-}
-
-// wrap a RawLink in a more specific type if possible.
-//
-// The function takes ownership of raw and closes it on error.
-func wrapRawLink(raw *RawLink) (_ Link, err error) {
-	defer func() {
-		if err != nil {
-			raw.Close()
-		}
-	}()
-
-	info, err := raw.Info()
-	if err != nil {
-		return nil, err
-	}
-
-	switch info.Type {
-	case RawTracepointType:
-		return &rawTracepoint{*raw}, nil
-	case TracingType:
-		return &tracing{*raw}, nil
-	case CgroupType:
-		return &linkCgroup{*raw}, nil
-	case IterType:
-		return &Iter{*raw}, nil
-	case NetNsType:
-		return &NetNsLink{*raw}, nil
-	case KprobeMultiType:
-		return &kprobeMultiLink{*raw}, nil
-	case PerfEventType:
-		return nil, fmt.Errorf("recovering perf event fd: %w", ErrNotSupported)
-	default:
-		return raw, nil
-	}
 }
 
 // ID uniquely identifies a BPF link.
@@ -125,44 +114,7 @@ type Info struct {
 	Type    Type
 	ID      ID
 	Program ebpf.ProgramID
-	extra   interface{}
-}
-
-type TracingInfo sys.TracingLinkInfo
-type CgroupInfo sys.CgroupLinkInfo
-type NetNsInfo sys.NetNsLinkInfo
-type XDPInfo sys.XDPLinkInfo
-
-// Tracing returns tracing type-specific link info.
-//
-// Returns nil if the type-specific link info isn't available.
-func (r Info) Tracing() *TracingInfo {
-	e, _ := r.extra.(*TracingInfo)
-	return e
-}
-
-// Cgroup returns cgroup type-specific link info.
-//
-// Returns nil if the type-specific link info isn't available.
-func (r Info) Cgroup() *CgroupInfo {
-	e, _ := r.extra.(*CgroupInfo)
-	return e
-}
-
-// NetNs returns netns type-specific link info.
-//
-// Returns nil if the type-specific link info isn't available.
-func (r Info) NetNs() *NetNsInfo {
-	e, _ := r.extra.(*NetNsInfo)
-	return e
-}
-
-// ExtraNetNs returns XDP type-specific link info.
-//
-// Returns nil if the type-specific link info isn't available.
-func (r Info) XDP() *XDPInfo {
-	e, _ := r.extra.(*XDPInfo)
-	return e
+	extra   any
 }
 
 // RawLink is the low-level API to bpf_link.
@@ -174,43 +126,18 @@ type RawLink struct {
 	pinnedPath string
 }
 
-// AttachRawLink creates a raw link.
-func AttachRawLink(opts RawLinkOptions) (*RawLink, error) {
-	if err := haveBPFLink(); err != nil {
-		return nil, err
-	}
-
-	if opts.Target < 0 {
-		return nil, fmt.Errorf("invalid target: %s", sys.ErrClosedFd)
-	}
-
-	progFd := opts.Program.FD()
-	if progFd < 0 {
-		return nil, fmt.Errorf("invalid program: %s", sys.ErrClosedFd)
-	}
-
-	attr := sys.LinkCreateAttr{
-		TargetFd:    uint32(opts.Target),
-		ProgFd:      uint32(progFd),
-		AttachType:  sys.AttachType(opts.Attach),
-		TargetBtfId: opts.BTF,
-		Flags:       opts.Flags,
-	}
-	fd, err := sys.LinkCreate(&attr)
-	if err != nil {
-		return nil, fmt.Errorf("create link: %w", err)
-	}
-
-	return &RawLink{fd, ""}, nil
-}
-
 func loadPinnedRawLink(fileName string, opts *ebpf.LoadPinOptions) (*RawLink, error) {
-	fd, err := sys.ObjGet(&sys.ObjGetAttr{
+	fd, typ, err := sys.ObjGetTyped(&sys.ObjGetAttr{
 		Pathname:  sys.NewStringPointer(fileName),
 		FileFlags: opts.Marshal(),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("load pinned link: %w", err)
+	}
+
+	if typ != sys.BPF_TYPE_LINK {
+		_ = fd.Close()
+		return nil, fmt.Errorf("%s is not a Link", fileName)
 	}
 
 	return &RawLink{fd, fileName}, nil
@@ -235,7 +162,7 @@ func (l *RawLink) Close() error {
 // Calling Close on a pinned Link will not break the link
 // until the pin is removed.
 func (l *RawLink) Pin(fileName string) error {
-	if err := internal.Pin(l.pinnedPath, fileName, l.fd); err != nil {
+	if err := sys.Pin(l.pinnedPath, fileName, l.fd); err != nil {
 		return err
 	}
 	l.pinnedPath = fileName
@@ -244,7 +171,7 @@ func (l *RawLink) Pin(fileName string) error {
 
 // Unpin implements the Link interface.
 func (l *RawLink) Unpin() error {
-	if err := internal.Unpin(l.pinnedPath); err != nil {
+	if err := sys.Unpin(l.pinnedPath); err != nil {
 		return err
 	}
 	l.pinnedPath = ""
@@ -291,10 +218,34 @@ func (l *RawLink) UpdateArgs(opts RawLinkUpdateOptions) error {
 		OldProgFd: uint32(oldFd),
 		Flags:     opts.Flags,
 	}
-	return sys.LinkUpdate(&attr)
+	if err := sys.LinkUpdate(&attr); err != nil {
+		return fmt.Errorf("update link: %w", err)
+	}
+	return nil
+}
+
+// Detach the link from its corresponding attachment point.
+func (l *RawLink) Detach() error {
+	attr := sys.LinkDetachAttr{
+		LinkFd: l.fd.Uint(),
+	}
+
+	err := sys.LinkDetach(&attr)
+
+	switch {
+	case errors.Is(err, unix.EOPNOTSUPP):
+		return internal.ErrNotSupported
+	case err != nil:
+		return fmt.Errorf("detach link: %w", err)
+	default:
+		return nil
+	}
 }
 
 // Info returns metadata about the link.
+//
+// Linktype specific metadata is not included and can be retrieved
+// via the linktype specific Info() method.
 func (l *RawLink) Info() (*Info, error) {
 	var info sys.LinkInfo
 
@@ -302,35 +253,81 @@ func (l *RawLink) Info() (*Info, error) {
 		return nil, fmt.Errorf("link info: %s", err)
 	}
 
-	var extra interface{}
-	switch info.Type {
-	case CgroupType:
-		extra = &CgroupInfo{}
-	case NetNsType:
-		extra = &NetNsInfo{}
-	case TracingType:
-		extra = &TracingInfo{}
-	case XDPType:
-		extra = &XDPInfo{}
-	case RawTracepointType, IterType,
-		PerfEventType, KprobeMultiType:
-		// Extra metadata not supported.
-	default:
-		return nil, fmt.Errorf("unknown link info type: %d", info.Type)
-	}
-
-	if extra != nil {
-		buf := bytes.NewReader(info.Extra[:])
-		err := binary.Read(buf, internal.NativeEndian, extra)
-		if err != nil {
-			return nil, fmt.Errorf("cannot read extra link info: %w", err)
-		}
-	}
-
 	return &Info{
 		info.Type,
 		info.Id,
 		ebpf.ProgramID(info.ProgId),
-		extra,
+		nil,
 	}, nil
+}
+
+// Iterator allows iterating over links attached into the kernel.
+type Iterator struct {
+	// The ID of the current link. Only valid after a call to Next
+	ID ID
+	// The current link. Only valid until a call to Next.
+	// See Take if you want to retain the link.
+	Link Link
+	err  error
+}
+
+// Next retrieves the next link.
+//
+// Returns true if another link was found. Call [Iterator.Err] after the function returns false.
+func (it *Iterator) Next() bool {
+	id := it.ID
+	for {
+		getIdAttr := &sys.LinkGetNextIdAttr{Id: id}
+		err := sys.LinkGetNextId(getIdAttr)
+		if errors.Is(err, os.ErrNotExist) {
+			// There are no more links.
+			break
+		} else if err != nil {
+			it.err = fmt.Errorf("get next link ID: %w", err)
+			break
+		}
+
+		id = getIdAttr.NextId
+		l, err := NewFromID(id)
+		if errors.Is(err, os.ErrNotExist) {
+			// Couldn't load the link fast enough. Try next ID.
+			continue
+		} else if err != nil {
+			it.err = fmt.Errorf("get link for ID %d: %w", id, err)
+			break
+		}
+
+		if it.Link != nil {
+			it.Link.Close()
+		}
+		it.ID, it.Link = id, l
+		return true
+	}
+
+	// No more links or we encountered an error.
+	if it.Link != nil {
+		it.Link.Close()
+	}
+	it.Link = nil
+	return false
+}
+
+// Take the ownership of the current link.
+//
+// It's the callers responsibility to close the link.
+func (it *Iterator) Take() Link {
+	l := it.Link
+	it.Link = nil
+	return l
+}
+
+// Err returns an error if iteration failed for some reason.
+func (it *Iterator) Err() error {
+	return it.err
+}
+
+func (it *Iterator) Close() {
+	if it.Link != nil {
+		it.Link.Close()
+	}
 }

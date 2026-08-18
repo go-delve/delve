@@ -1,3 +1,4 @@
+// Package kconfig implements a parser for the format of Linux's .config file.
 package kconfig
 
 import (
@@ -7,37 +8,12 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"os"
 	"strconv"
 	"strings"
 
 	"github.com/cilium/ebpf/btf"
 	"github.com/cilium/ebpf/internal"
 )
-
-// Find find a kconfig file on the host.
-// It first reads from /boot/config- of the current running kernel and tries
-// /proc/config.gz if nothing was found in /boot.
-// If none of the file provide a kconfig, it returns an error.
-func Find() (*os.File, error) {
-	kernelRelease, err := internal.KernelRelease()
-	if err != nil {
-		return nil, fmt.Errorf("cannot get kernel release: %w", err)
-	}
-
-	path := "/boot/config-" + kernelRelease
-	f, err := os.Open(path)
-	if err == nil {
-		return f, nil
-	}
-
-	f, err = os.Open("/proc/config.gz")
-	if err == nil {
-		return f, nil
-	}
-
-	return nil, fmt.Errorf("neither %s nor /proc/config.gz provide a kconfig", path)
-}
 
 // Parse parses the kconfig file for which a reader is given.
 // All the CONFIG_* which are in filter and which are set set will be
@@ -127,12 +103,13 @@ func PutValue(data []byte, typ btf.Type, value string) error {
 	switch value {
 	case "y", "n", "m":
 		return putValueTri(data, typ, value)
-	default:
-		if strings.HasPrefix(value, `"`) {
-			return putValueString(data, typ, value)
-		}
-		return putValueNumber(data, typ, value)
 	}
+
+	if strings.HasPrefix(value, `"`) {
+		return putValueString(data, typ, value)
+	}
+
+	return putValueNumber(data, typ, value)
 }
 
 // Golang translation of libbpf_tristate enum:
@@ -169,6 +146,10 @@ func putValueTri(data []byte, typ btf.Type, value string) error {
 			return fmt.Errorf("cannot use enum %q, only libbpf_tristate is supported", v.Name)
 		}
 
+		if len(data) != 4 {
+			return fmt.Errorf("expected enum value to occupy 4 bytes in datasec, got: %d", len(data))
+		}
+
 		var tri triState
 		switch value {
 		case "y":
@@ -178,10 +159,10 @@ func putValueTri(data []byte, typ btf.Type, value string) error {
 		case "n":
 			tri = TriNo
 		default:
-			return fmt.Errorf("value %q is not support for libbpf_tristate", value)
+			return fmt.Errorf("value %q is not supported for libbpf_tristate", value)
 		}
 
-		internal.NativeEndian.PutUint64(data, uint64(tri))
+		internal.NativeEndian.PutUint32(data, uint32(tri))
 	default:
 		return fmt.Errorf("cannot add number value, expected btf.Int or btf.Enum, got: %T", v)
 	}
@@ -202,8 +183,8 @@ func putValueString(data []byte, typ btf.Type, value string) error {
 
 	// Any Int, which is not bool, of one byte could be used to store char:
 	// https://github.com/torvalds/linux/blob/1a5304fecee5/tools/lib/bpf/libbpf.c#L3637-L3638
-	if contentType.Size != 1 && contentType.Encoding != btf.Bool {
-		return fmt.Errorf("cannot add string value, expected array of btf.Int of size 1, got array of btf.Int of size: %v", contentType.Size)
+	if contentType.Size != 1 || contentType.Encoding == btf.Bool {
+		return fmt.Errorf("cannot add string value, expected array of non-bool btf.Int of size 1, got array of btf.Int with encoding %v and size %v", contentType.Encoding, contentType.Size)
 	}
 
 	if !strings.HasPrefix(value, `"`) || !strings.HasSuffix(value, `"`) {
@@ -250,17 +231,43 @@ func putValueNumber(data []byte, typ btf.Type, value string) error {
 		return fmt.Errorf("cannot parse value: %w", err)
 	}
 
-	switch size {
+	return PutInteger(data, integer, n)
+}
+
+// PutInteger writes n into data.
+//
+// integer determines how much is written into data and what the valid values
+// are.
+func PutInteger(data []byte, integer *btf.Int, n uint64) error {
+	// This function should match set_kcfg_value_num in libbpf.
+	if integer.Encoding == btf.Bool && n > 1 {
+		return fmt.Errorf("invalid boolean value: %d", n)
+	}
+
+	if len(data) < int(integer.Size) {
+		return fmt.Errorf("can't fit an integer of size %d into a byte slice of length %d", integer.Size, len(data))
+	}
+
+	switch integer.Size {
 	case 1:
+		if integer.Encoding == btf.Signed && (int64(n) > math.MaxInt8 || int64(n) < math.MinInt8) {
+			return fmt.Errorf("can't represent %d as a signed integer of size %d", int64(n), integer.Size)
+		}
 		data[0] = byte(n)
 	case 2:
+		if integer.Encoding == btf.Signed && (int64(n) > math.MaxInt16 || int64(n) < math.MinInt16) {
+			return fmt.Errorf("can't represent %d as a signed integer of size %d", int64(n), integer.Size)
+		}
 		internal.NativeEndian.PutUint16(data, uint16(n))
 	case 4:
+		if integer.Encoding == btf.Signed && (int64(n) > math.MaxInt32 || int64(n) < math.MinInt32) {
+			return fmt.Errorf("can't represent %d as a signed integer of size %d", int64(n), integer.Size)
+		}
 		internal.NativeEndian.PutUint32(data, uint32(n))
 	case 8:
 		internal.NativeEndian.PutUint64(data, uint64(n))
 	default:
-		return fmt.Errorf("size (%d) is not valid, expected: 1, 2, 4 or 8", size)
+		return fmt.Errorf("size (%d) is not valid, expected: 1, 2, 4 or 8", integer.Size)
 	}
 
 	return nil

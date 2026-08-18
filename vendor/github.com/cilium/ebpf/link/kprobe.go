@@ -1,3 +1,5 @@
+//go:build !windows
+
 package link
 
 import (
@@ -10,6 +12,7 @@ import (
 
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/internal"
+	"github.com/cilium/ebpf/internal/linux"
 	"github.com/cilium/ebpf/internal/sys"
 	"github.com/cilium/ebpf/internal/tracefs"
 	"github.com/cilium/ebpf/internal/unix"
@@ -30,8 +33,9 @@ type KprobeOptions struct {
 	// Increase the maximum number of concurrent invocations of a kretprobe.
 	// Required when tracing some long running functions in the kernel.
 	//
-	// Deprecated: this setting forces the use of an outdated kernel API and is not portable
-	// across kernel versions.
+	// Warning: this setting forces the use of an outdated kernel API and is
+	// not portable across kernel versions. On supported kernels, consider using
+	// fexit programs instead, as they don't have this MaxActive limitation.
 	RetprobeMaxActive int
 	// Prefix used for the event name if the kprobe must be attached using tracefs.
 	// The group name will be formatted as `<prefix>_<randomstr>`.
@@ -59,6 +63,11 @@ func (ko *KprobeOptions) cookie() uint64 {
 // If attaching to symbol fails, automatically retries with the running
 // platform's syscall prefix (e.g. __x64_) to support attaching to syscalls
 // in a portable fashion.
+//
+// On kernels 6.11 and later, setting a kprobe on a nonexistent symbol using
+// tracefs incorrectly returns [unix.EINVAL] instead of [os.ErrNotExist].
+//
+// The returned Link may implement [PerfEvent].
 func Kprobe(symbol string, prog *ebpf.Program, opts *KprobeOptions) (Link, error) {
 	k, err := kprobe(symbol, prog, opts, false)
 	if err != nil {
@@ -89,7 +98,9 @@ func Kprobe(symbol string, prog *ebpf.Program, opts *KprobeOptions) (Link, error
 // in a portable fashion.
 //
 // On kernels 5.10 and earlier, setting a kretprobe on a nonexistent symbol
-// incorrectly returns unix.EINVAL instead of os.ErrNotExist.
+// incorrectly returns [unix.EINVAL] instead of [os.ErrNotExist].
+//
+// The returned Link may implement [PerfEvent].
 func Kretprobe(symbol string, prog *ebpf.Program, opts *KprobeOptions) (Link, error) {
 	k, err := kprobe(symbol, prog, opts, true)
 	if err != nil {
@@ -165,7 +176,7 @@ func kprobe(symbol string, prog *ebpf.Program, opts *KprobeOptions, ret bool) (*
 	// Use kprobe PMU if the kernel has it available.
 	tp, err := pmuProbe(args)
 	if errors.Is(err, os.ErrNotExist) || errors.Is(err, unix.EINVAL) {
-		if prefix := internal.PlatformPrefix(); prefix != "" {
+		if prefix := linux.PlatformPrefix(); prefix != "" {
 			args.Symbol = prefix + symbol
 			tp, err = pmuProbe(args)
 		}
@@ -173,7 +184,7 @@ func kprobe(symbol string, prog *ebpf.Program, opts *KprobeOptions, ret bool) (*
 	if err == nil {
 		return tp, nil
 	}
-	if err != nil && !errors.Is(err, ErrNotSupported) {
+	if !errors.Is(err, ErrNotSupported) {
 		return nil, fmt.Errorf("creating perf_kprobe PMU (arch-specific fallback for %q): %w", symbol, err)
 	}
 
@@ -181,7 +192,7 @@ func kprobe(symbol string, prog *ebpf.Program, opts *KprobeOptions, ret bool) (*
 	args.Symbol = symbol
 	tp, err = tracefsProbe(args)
 	if errors.Is(err, os.ErrNotExist) || errors.Is(err, unix.EINVAL) {
-		if prefix := internal.PlatformPrefix(); prefix != "" {
+		if prefix := linux.PlatformPrefix(); prefix != "" {
 			args.Symbol = prefix + symbol
 			tp, err = tracefsProbe(args)
 		}
@@ -274,7 +285,11 @@ func pmuProbe(args tracefs.ProbeArgs) (*perfEvent, error) {
 		}
 	}
 
-	rawFd, err := unix.PerfEventOpen(&attr, args.Pid, 0, -1, unix.PERF_FLAG_FD_CLOEXEC)
+	cpu := 0
+	if args.Pid != perfAllThreads {
+		cpu = -1
+	}
+	rawFd, err := unix.PerfEventOpen(&attr, args.Pid, cpu, -1, unix.PERF_FLAG_FD_CLOEXEC)
 
 	// On some old kernels, kprobe PMU doesn't allow `.` in symbol names and
 	// return -EINVAL. Return ErrNotSupported to allow falling back to tracefs.
