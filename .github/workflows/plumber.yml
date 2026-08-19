@@ -18,7 +18,7 @@ jobs:
       # Needed by score-push to publish the score for the README badge.
       id-token: write
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - uses: getplumber/plumber@40bd6b5bb8ff4f0944feacaeb41dea6bce08d62d # v0.4.28
         with:
