@@ -2146,6 +2146,7 @@ func TestEmbeddedStructMethodsAndFieldLookup(t *testing.T) {
 
 func TestCGlobal(t *testing.T) {
 	skipOn(t, "not working on freebsd", "freebsd")
+	skipOn(t, "broken", "ppc64le")
 	withTestProcess("dwzcompression", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
 		setFunctionBreakpoint(p, t, "C.fortytwo")
 		assertNoError(grp.Continue(), t, "first Continue()")

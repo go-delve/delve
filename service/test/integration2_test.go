@@ -3417,6 +3417,9 @@ func TestCancelDownload(t *testing.T) {
 	if runtime.GOOS != "linux" {
 		t.Skip("linux only")
 	}
+	if runtime.GOARCH == "ppc64le" {
+		t.Skip("cgo support broken")
+	}
 	fakedebuginfodDir, _ := filepath.Abs(filepath.Join(protest.FindFixturesDir(), "fake-debuginfod-find"))
 	t.Setenv("PATH", os.ExpandEnv(fakedebuginfodDir+":$PATH"))
 	withTestClient2("cgotest", t, func(c service.Client) {

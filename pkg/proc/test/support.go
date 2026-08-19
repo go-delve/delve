@@ -202,9 +202,7 @@ func BuildFixture(t testing.TB, name string, flags BuildFlags) Fixture {
 
 	// Build the test binary
 	if out, err := cmd.CombinedOutput(); err != nil {
-		fmt.Printf("Error compiling %s: %s\n", path, err)
-		fmt.Printf("%s\n", string(out))
-		os.Exit(1)
+		t.Fatalf("Error compiling %s: %s\n%s", path, err, string(out))
 	}
 
 	source, _ := filepath.Abs(path)
