@@ -12,4 +12,6 @@ localtests
 .teamcity/target
 .vscode
 .claude
+.superpowers/
+docs/superpowers/
 dist/
