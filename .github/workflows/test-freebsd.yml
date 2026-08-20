@@ -1,0 +1,49 @@
+name: Test FreeBSD
+
+on:
+  push:
+  pull_request:
+    branches: [master]
+
+# Cancel existing runs if user makes another push.
+concurrency:
+  group: '${{ github.ref }}-${{ github.workflow}}'
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  GOFLAGS: -mod=vendor
+
+jobs:
+  test-freebsd:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    strategy:
+      fail-fast: false
+      matrix:
+        # Both supported branches. Only the leading part is given, so the
+        # newest release of each keeps being picked up without an edit here.
+        freebsd-version: ['14', '15']
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+
+      - name: Run tests
+        uses: vmactions/freebsd-vm@83b151f58c6047089f4c80eb5ba2039d158ce093 # v1.5.3
+        with:
+          release: ${{ matrix.freebsd-version }}
+          envs: 'GOFLAGS'
+          copyback: false
+          prepare: |
+            pkg install -y go gcc git
+            # The workspace is rsynced into the VM with the runner's uid,
+            # which does not exist there, so git refuses to read the
+            # repository and the $(go list ...) in the vet target silently
+            # comes back empty.
+            git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          run: |
+            make test
