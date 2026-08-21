@@ -145,7 +145,10 @@ func (s *RPCServer) Command(command api.DebuggerCommand, cb service.RPCCallback)
 }
 
 func (s *RPCServer) eventsFn(event *proc.Event) {
-	s.eventsChan <- event
+	select {
+	case s.eventsChan <- event:
+	default:
+	}
 }
 
 type GetBufferedTracepointsIn struct {

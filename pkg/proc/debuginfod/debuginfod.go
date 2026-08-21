@@ -11,7 +11,7 @@ import (
 )
 
 const debuginfodFind = "debuginfod-find"
-const notificationThrottle time.Duration = 1 * time.Second
+const notificationThrottle time.Duration = 500 * time.Millisecond
 
 func execFind(ctx context.Context, notify func(string), args ...string) (string, error) {
 	if _, err := exec.LookPath(debuginfodFind); err != nil {

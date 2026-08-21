@@ -1101,6 +1101,11 @@ func (d *Debugger) Command(command *api.DebuggerCommand, resumeNotify chan struc
 			}
 		}
 		d.recordMutex.Unlock()
+
+		if resumeNotify != nil {
+			close(resumeNotify)
+			resumeNotify = nil
+		}
 	}
 
 	withBreakpointInfo := true
