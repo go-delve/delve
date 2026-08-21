@@ -27,6 +27,12 @@ type fullyQualifiedVariable struct {
 	// startIndex is the index of the first child for an array or slice.
 	// This variable represents a chunk of the array, slice or map.
 	startIndex int
+	// goroutineID and frameIndex identify the scope (goroutine and stack frame)
+	// this variable belongs to, so that SetVariable acts on the correct frame
+	// rather than always the top frame. They are propagated from the scope
+	// handle to its child variable handles.
+	goroutineID int
+	frameIndex  int
 }
 
 func newHandlesMap[T any]() *handlesMap[T] {

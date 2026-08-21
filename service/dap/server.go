@@ -2692,7 +2692,7 @@ func (s *Session) onScopesRequest(request *dap.ScopesRequest) {
 		s.sendErrorResponse(request.Request, UnableToListLocals, "Unable to list locals", err.Error())
 		return
 	}
-	locScope := &fullyQualifiedVariable{&proc.Variable{Name: fmt.Sprintf("Locals%s", suffix), Children: slicePtrVarToSliceVar(append(args, locals...))}, "", true, 0}
+	locScope := &fullyQualifiedVariable{&proc.Variable{Name: fmt.Sprintf("Locals%s", suffix), Children: slicePtrVarToSliceVar(append(args, locals...))}, "", true, 0, goid, frame}
 	scopeLocals := dap.Scope{Name: locScope.Name, VariablesReference: s.variableHandles.create(locScope)}
 	scopes := []dap.Scope{scopeLocals}
 
@@ -2726,7 +2726,7 @@ func (s *Session) onScopesRequest(request *dap.ScopesRequest) {
 		globScope := &fullyQualifiedVariable{&proc.Variable{
 			Name:     fmt.Sprintf("Globals (package %s)", currPkg),
 			Children: slicePtrVarToSliceVar(globals),
-		}, currPkg, true, 0}
+		}, currPkg, true, 0, -1, 0}
 		scopeGlobals := dap.Scope{Name: globScope.Name, VariablesReference: s.variableHandles.create(globScope)}
 		scopes = append(scopes, scopeGlobals)
 	}
@@ -2747,7 +2747,7 @@ func (s *Session) onScopesRequest(request *dap.ScopesRequest) {
 				Kind:  reflect.Kind(proc.VariableConstant),
 			}
 		}
-		regsScope := &fullyQualifiedVariable{&proc.Variable{Name: "Registers", Children: regsVar}, "", true, 0}
+		regsScope := &fullyQualifiedVariable{&proc.Variable{Name: "Registers", Children: regsVar}, "", true, 0, goid, frame}
 		scopeRegisters := dap.Scope{Name: regsScope.Name, VariablesReference: s.variableHandles.create(regsScope)}
 		scopes = append(scopes, scopeRegisters)
 	}
@@ -2827,7 +2827,7 @@ func (s *Session) maybeLoadResliced(v *fullyQualifiedVariable, start, count int)
 	if err != nil {
 		return nil, err
 	}
-	return &fullyQualifiedVariable{newV, v.fullyQualifiedNameOrExpr, false, start}, nil
+	return &fullyQualifiedVariable{newV, v.fullyQualifiedNameOrExpr, false, start, v.goroutineID, v.frameIndex}, nil
 }
 
 // getIndexedVariableCount returns the number of indexed variables
@@ -2872,8 +2872,8 @@ func (s *Session) childrenToDAPVariables(v *fullyQualifiedVariable) []dap.Variab
 					}
 				}
 			}
-			key, keyref := s.convertVariable(keyv, keyexpr)
-			val, valref := s.convertVariable(valv, valexpr)
+			key, keyref := s.convertVariable(keyv, keyexpr, v.goroutineID, v.frameIndex)
+			val, valref := s.convertVariable(valv, valexpr, v.goroutineID, v.frameIndex)
 			keyType := s.getTypeIfSupported(keyv)
 			valType := s.getTypeIfSupported(valv)
 			// If key or value or both are scalars, we can use
@@ -2931,7 +2931,7 @@ func (s *Session) childrenToDAPVariables(v *fullyQualifiedVariable) []dap.Variab
 		for i := range v.Children {
 			idx := v.startIndex + i
 			cfqname := fmt.Sprintf("%s[%d]", v.fullyQualifiedNameOrExpr, idx)
-			cvalue, cvarref := s.convertVariable(&v.Children[i], cfqname)
+			cvalue, cvarref := s.convertVariable(&v.Children[i], cfqname, v.goroutineID, v.frameIndex)
 			children[i] = dap.Variable{
 				Name:               fmt.Sprintf("[%d]", idx),
 				EvaluateName:       cfqname,
@@ -2962,7 +2962,7 @@ func (s *Session) childrenToDAPVariables(v *fullyQualifiedVariable) []dap.Variab
 			case v.Kind == reflect.Complex64 || v.Kind == reflect.Complex128:
 				cfqname = "" // complex children are not struct fields and can't be accessed directly
 			}
-			cvalue, cvarref := s.convertVariable(c, cfqname)
+			cvalue, cvarref := s.convertVariable(c, cfqname, v.goroutineID, v.frameIndex)
 
 			// Annotate any shadowed variables to "(name)" in order
 			// to distinguish from non-shadowed variables.
@@ -3086,12 +3086,12 @@ func (s *Session) getTypeIfSupported(v *proc.Variable) string {
 // variables request can be issued to get the elements of the compound variable. As a
 // custom, a zero reference, reminiscent of a zero pointer, is used to indicate that
 // a scalar variable cannot be "dereferenced" to get its elements (as there are none).
-func (s *Session) convertVariable(v *proc.Variable, qualifiedNameOrExpr string) (value string, variablesReference int) {
-	return s.convertVariableWithOpts(v, qualifiedNameOrExpr, 0)
+func (s *Session) convertVariable(v *proc.Variable, qualifiedNameOrExpr string, goid, frame int) (value string, variablesReference int) {
+	return s.convertVariableWithOpts(v, qualifiedNameOrExpr, 0, goid, frame)
 }
 
 func (s *Session) convertVariableToString(v *proc.Variable) string {
-	val, _ := s.convertVariableWithOpts(v, "", skipRef)
+	val, _ := s.convertVariableWithOpts(v, "", skipRef, -1, 0)
 	return val
 }
 
@@ -3114,14 +3114,14 @@ const (
 // a string representation of the variable. When the variable is a compound or reference
 // type variable and its full string representation can be larger than defaultMaxValueLen,
 // this returns a truncated value unless showFull option flag is set.
-func (s *Session) convertVariableWithOpts(v *proc.Variable, qualifiedNameOrExpr string, opts convertVariableFlags) (value string, variablesReference int) {
+func (s *Session) convertVariableWithOpts(v *proc.Variable, qualifiedNameOrExpr string, opts convertVariableFlags, goid, frame int) (value string, variablesReference int) {
 	canHaveRef := false
 	maybeCreateVariableHandle := func(v *proc.Variable) int {
 		canHaveRef = true
 		if opts&skipRef != 0 {
 			return 0
 		}
-		return s.variableHandles.create(&fullyQualifiedVariable{v, qualifiedNameOrExpr, false /*not a scope*/, 0})
+		return s.variableHandles.create(&fullyQualifiedVariable{v, qualifiedNameOrExpr, false /*not a scope*/, 0, goid, frame})
 	}
 	value = formatVar(v, s.args.ShowRawStrings)
 	if v.Unreadable != nil {
@@ -3325,7 +3325,7 @@ func (s *Session) onEvaluateRequest(request *dap.EvaluateRequest) {
 			}
 			response.Body = dap.EvaluateResponseBody{
 				Result:             strings.TrimRight(retVarsAsStr.String(), ", "),
-				VariablesReference: s.variableHandles.create(&fullyQualifiedVariable{retVarsAsVar, "", false /*not a scope*/, 0}),
+				VariablesReference: s.variableHandles.create(&fullyQualifiedVariable{retVarsAsVar, "", false /*not a scope*/, 0, goid, frame}),
 			}
 		}
 	} else { // {expression}
@@ -3357,7 +3357,7 @@ func (s *Session) onEvaluateRequest(request *dap.EvaluateRequest) {
 		if ctxt == "clipboard" || ctxt == "variables" {
 			opts |= showFullValue
 		}
-		exprVal, exprRef := s.convertVariableWithOpts(exprVar, fmt.Sprintf("(%s)", request.Arguments.Expression), opts)
+		exprVal, exprRef := s.convertVariableWithOpts(exprVar, fmt.Sprintf("(%s)", request.Arguments.Expression), opts, goid, frame)
 		response.Body = dap.EvaluateResponseBody{Result: exprVal, Type: s.getTypeIfSupported(exprVar), VariablesReference: exprRef, IndexedVariables: getIndexedVariableCount(exprVar), NamedVariables: getNamedVariableCount(exprVar)}
 	}
 	s.send(response)
@@ -3618,9 +3618,9 @@ func (s *Session) onSetVariableRequest(request *dap.SetVariableRequest) {
 
 	// By running EvalVariableInScope, we get the type info of the variable
 	// that can be accessed with the evaluateName, and ensure the variable we are
-	// trying to update is valid and accessible from the top most frame & the
-	// current goroutine.
-	goid, frame := -1, 0
+	// trying to update is valid and accessible from the frame & goroutine of
+	// the scope that owns it.
+	goid, frame := v.goroutineID, v.frameIndex
 	evaluated, err := s.debugger.EvalVariableInScope(int64(goid), frame, 0, evaluateName, s.loadConfig())
 	if err != nil {
 		s.sendErrorResponse(request.Request, UnableToSetVariable, "Unable to lookup variable", err.Error())
@@ -4644,7 +4644,7 @@ func (msg *logMessage) evaluate(s *Session, goid int64) string {
 			evaluated[i] = fmt.Sprintf("{eval err: %e}", err)
 			continue
 		}
-		evaluated[i], _ = s.convertVariableWithOpts(exprVar, "", skipRef|showFullValue)
+		evaluated[i], _ = s.convertVariableWithOpts(exprVar, "", skipRef|showFullValue, -1, 0)
 	}
 	return fmt.Sprintf(msg.format, evaluated...)
 }
