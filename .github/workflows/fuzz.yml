@@ -29,3 +29,18 @@ jobs:
 
       - name: Run timed fuzz
         run: _scripts/fuzz_eval_expression.sh fuzz
+
+      # Crashers land in testdata/fuzz/; fuzzexe/fuzzinfo/fuzzcoredump are
+      # the setup files needed to replay them after the runner is gone.
+      - name: Upload fuzz crashers
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: fuzz-eval-expression
+          path: |
+            pkg/proc/testdata/fuzz/
+            pkg/proc/testdata/fuzzexe
+            pkg/proc/testdata/fuzzcoredump
+            pkg/proc/testdata/fuzzinfo
+          if-no-files-found: warn
+          retention-days: 30
