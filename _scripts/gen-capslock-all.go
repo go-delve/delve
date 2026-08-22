@@ -22,7 +22,7 @@ var platforms = []Platform{
 	{GOOS: "linux", GOARCH: "amd64"},
 	{GOOS: "linux", GOARCH: "386"},
 	{GOOS: "linux", GOARCH: "arm64"},
-	{GOOS: "linux", GOARCH: "riscv64"},
+	{GOOS: "linux", GOARCH: "riscv64", BuildTags: "exp.linuxriscv64"},
 	{GOOS: "linux", GOARCH: "ppc64le", BuildTags: "exp.linuxppc64le"},
 	{GOOS: "darwin", GOARCH: "amd64"},
 	{GOOS: "darwin", GOARCH: "arm64"},
@@ -106,13 +106,12 @@ func main() {
 func generateCapslock(platform Platform) error {
 	outputFile := fmt.Sprintf("_scripts/capslock_%s_%s-output.txt", platform.GOOS, platform.GOARCH)
 
-	args := []string{"run", "github.com/google/capslock/cmd/capslock@latest"}
+	args := []string{}
 	if platform.BuildTags != "" {
 		args = append(args, "-buildtags", platform.BuildTags)
 	}
 	args = append(args, "-packages", "./cmd/dlv")
-
-	cmd := exec.Command("go", args...)
+	cmd := exec.Command("capslock", args...)
 	cmd.Env = append(os.Environ(),
 		fmt.Sprintf("GOOS=%s", platform.GOOS),
 		fmt.Sprintf("GOARCH=%s", platform.GOARCH),
