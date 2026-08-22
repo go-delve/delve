@@ -78,6 +78,8 @@ func (grp *TargetGroup) Continue() error {
 			grp.finishManualStop()
 		}
 	}()
+	hadAttaching := grp.targets[0].BinInfo().attaching
+	grp.targets[0].BinInfo().attaching = false
 	for {
 		err := grp.manageUnsatisfiableBreakpoints()
 		if err != nil {
@@ -153,6 +155,21 @@ func (grp *TargetGroup) Continue() error {
 			it.Reset()
 			for it.Next() {
 				it.Target.ClearSteppingBreakpoints()
+			}
+		}
+
+		if hadAttaching {
+			hadAttaching = false
+			if valid, _ := grp.targets[0].Valid(); valid {
+				bi := grp.targets[0].BinInfo()
+				for i := 1; i < len(bi.Images); i++ {
+					if bi.Images[i].loadErr == ErrDebuginfodSkippedOnAttach {
+						err := loadBinaryInfo(bi, bi.Images[i], bi.Images[i].Path, bi.Images[i].addr)
+						if err != nil {
+							bi.Images[i].loadErr = err
+						}
+					}
+				}
 			}
 		}
 
@@ -625,6 +642,7 @@ func (grp *TargetGroup) StepOut() error {
 // threads will remain stopped.
 func (grp *TargetGroup) StepInstruction(skipCalls bool) (err error) {
 	dbp := grp.Selected
+	dbp.BinInfo().attaching = false
 	thread := dbp.CurrentThread()
 	g := dbp.SelectedGoroutine()
 	if g != nil {

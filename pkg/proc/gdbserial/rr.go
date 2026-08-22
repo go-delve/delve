@@ -175,7 +175,7 @@ func Replay(tracedir string, quiet, deleteOnDetach bool, debugInfoDirs []string,
 		return nil, init.err
 	}
 
-	p := newProcess(rrcmd.Process)
+	p := newProcess(rrcmd.Process, false)
 	p.tracedir = tracedir
 	p.conn.useXcmd = true // 'rr' does not support the 'M' command which is what we would usually use to write memory, this is only important during function calls, in any other situation writing memory will fail anyway.
 	p.conn.newRRCmdStyle = rrVersion.AfterOrEqual(goversion.GoVersion{Major: 5, Minor: 8, Rev: 0})
