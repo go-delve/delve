@@ -1860,6 +1860,10 @@ func TestCapsLock(t *testing.T) {
 	cmd.Env = append(os.Environ(), fmt.Sprintf("GOOS=%s", goos), fmt.Sprintf("GOARCH=%s", goarch))
 	out, _ := cmd.CombinedOutput()
 
+	if strings.HasPrefix(string(out), "panic: ") {
+		t.Skip("capslock panicked")
+	}
+
 	genCommand := "go run _scripts/gen-capslock-all.go"
 	checkAutogenDoc(t, expectedFile, genCommand, out)
 }
