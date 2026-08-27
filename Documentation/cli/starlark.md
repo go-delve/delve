@@ -64,7 +64,7 @@ types(Filter) | Equivalent to API call [ListTypes](https://pkg.go.dev/github.com
 process_pid() | Equivalent to API call [ProcessPid](https://pkg.go.dev/github.com/go-delve/delve/service/rpc2#RPCServer.ProcessPid)
 recorded() | Equivalent to API call [Recorded](https://pkg.go.dev/github.com/go-delve/delve/service/rpc2#RPCServer.Recorded)
 restart(Position, ResetArgs, NewArgs, Rerecord, Rebuild, NewRedirects) | Equivalent to API call [Restart](https://pkg.go.dev/github.com/go-delve/delve/service/rpc2#RPCServer.Restart)
-set_expr(Scope, Symbol, Value) | Equivalent to API call [Set](https://pkg.go.dev/github.com/go-delve/delve/service/rpc2#RPCServer.Set)
+set_expr(Scope, Symbol, Value, Timeout) | Equivalent to API call [Set](https://pkg.go.dev/github.com/go-delve/delve/service/rpc2#RPCServer.Set)
 set_execution_point(Addr) | Equivalent to API call [SetExecutionPoint](https://pkg.go.dev/github.com/go-delve/delve/service/rpc2#RPCServer.SetExecutionPoint)
 stacktrace(Id, Depth, Full, Defers, Opts, Cfg, Skip) | Equivalent to API call [Stacktrace](https://pkg.go.dev/github.com/go-delve/delve/service/rpc2#RPCServer.Stacktrace)
 state(NonBlocking) | Equivalent to API call [State](https://pkg.go.dev/github.com/go-delve/delve/service/rpc2#RPCServer.State)

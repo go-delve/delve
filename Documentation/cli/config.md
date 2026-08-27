@@ -9,6 +9,7 @@ Option | Description
 aliases | Map fo command aliases `command: [ "alias1", "alias2" ]`.
 debug-info-directories | List of directories to use when searching for separate debug info files.
 disassemble-flavor | Disassembler syntax. Can be 'intel', 'gun' or 'go'.
+eval-timeout | Maximum time that an expression evaluation can take, in milliseconds. Defaults to 100ms.
 max-array-values | Maximum number of array values when printing variables.
 max-string-len | Maximum string length used when printing variables.
 max-variable-recurse | Maximum number of nested struct members when printing variables.

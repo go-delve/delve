@@ -4405,6 +4405,7 @@ func formatConfig(depth, maxStringLen, maxArrayValues int, showGlobals, showRegi
 	formatStr := `stackTraceDepth	%d
 maxStringLen	%d
 maxArrayValues	%d
+evalTimeout	0
 showGlobalVariables	%v
 showRegisters	%v
 goroutineFilters	%q

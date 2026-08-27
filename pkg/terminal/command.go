@@ -2301,7 +2301,7 @@ func setVar(t *Term, ctx callContext, args string) error {
 
 	lexpr := args[:el[0].Pos.Offset]
 	rexpr := args[el[0].Pos.Offset+1:]
-	return t.client.SetVariable(ctx.Scope, lexpr, rexpr)
+	return t.client.SetVariable(ctx.Scope, lexpr, rexpr, t.evalTimeout())
 }
 
 func (t *Term) printFilteredVariables(varType string, vars []api.Variable, filter string, cfg api.LoadConfig) error {

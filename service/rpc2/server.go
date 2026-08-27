@@ -595,9 +595,10 @@ func (s *RPCServer) Eval(arg EvalIn, out *EvalOut) error {
 }
 
 type SetIn struct {
-	Scope  api.EvalScope
-	Symbol string
-	Value  string
+	Scope   api.EvalScope
+	Symbol  string
+	Value   string
+	Timeout int // timeout in milliseconds, defaults to 100 milliseconds.
 }
 
 type SetOut struct {
@@ -606,7 +607,7 @@ type SetOut struct {
 // Set sets the value of a variable. Only numerical types and
 // pointers are currently supported.
 func (s *RPCServer) Set(arg SetIn, out *SetOut) error {
-	return s.debugger.SetVariableInScope(arg.Scope.GoroutineID, arg.Scope.Frame, arg.Scope.DeferredCall, arg.Symbol, arg.Value)
+	return s.debugger.SetVariableInScope(arg.Scope.GoroutineID, arg.Scope.Frame, arg.Scope.DeferredCall, arg.Symbol, arg.Value, arg.Timeout)
 }
 
 type ListSourcesIn struct {

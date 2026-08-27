@@ -631,18 +631,32 @@ func (t *Term) handleExit() (int, error) {
 func (t *Term) loadConfig() api.LoadConfig {
 	full := proc.LoadFullValue()
 	r := *api.LoadConfigFromProc(&full)
+	if t.conf == nil {
+		return r
+	}
 
-	if t.conf != nil && t.conf.MaxStringLen != nil {
+	if t.conf.MaxStringLen != nil {
 		r.MaxStringLen = *t.conf.MaxStringLen
 	}
-	if t.conf != nil && t.conf.MaxArrayValues != nil {
+	if t.conf.MaxArrayValues != nil {
 		r.MaxArrayValues = *t.conf.MaxArrayValues
 	}
-	if t.conf != nil && t.conf.MaxVariableRecurse != nil {
+	if t.conf.MaxVariableRecurse != nil {
 		r.MaxVariableRecurse = *t.conf.MaxVariableRecurse
+	}
+	if t.conf.EvalTimeout != nil {
+		r.EvalTimeout = *t.conf.EvalTimeout
 	}
 
 	return r
+}
+
+// evalTimeout returns the expression evaluation timeout in milliseconds
+func (t *Term) evalTimeout() int {
+	if t.conf != nil && t.conf.EvalTimeout != nil {
+		return *t.conf.EvalTimeout
+	}
+	return 0
 }
 
 func (t *Term) removeDisplay(n int) error {

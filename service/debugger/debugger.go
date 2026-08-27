@@ -1773,7 +1773,7 @@ func (d *Debugger) LoadResliced(v *proc.Variable, start int, cfg proc.LoadConfig
 
 // SetVariableInScope will set the value of the variable represented by
 // 'symbol' to the value given, in the given scope.
-func (d *Debugger) SetVariableInScope(goid int64, frame, deferredCall int, symbol, value string) error {
+func (d *Debugger) SetVariableInScope(goid int64, frame, deferredCall int, symbol, value string, timeout int) error {
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
 
@@ -1781,7 +1781,7 @@ func (d *Debugger) SetVariableInScope(goid int64, frame, deferredCall int, symbo
 	if err != nil {
 		return err
 	}
-	return s.SetVariable(symbol, value)
+	return s.SetVariable(symbol, value, timeout)
 }
 
 // Goroutines will return a list of goroutines in the target process.
