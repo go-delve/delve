@@ -25,6 +25,7 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
 	"unsafe"
 
 	sys "golang.org/x/sys/unix"
@@ -443,8 +444,22 @@ func status(pid int) int {
 // Only used in this file
 func (dbp *nativeProcess) wait(pid, options int) (int, *sys.WaitStatus, error) {
 	var s sys.WaitStatus
-	wpid, err := sys.Wait4(pid, &s, options, nil)
-	return wpid, &s, err
+	if options != 0 {
+		wpid, err := sys.Wait4(pid, &s, options, nil)
+		return wpid, &s, err
+	}
+	// Poll with WNOHANG instead of blocking in wait4.  When two threads
+	// enter their ptrace-stops at the same time the kernel reports one of
+	// them, and the wakeup for the second stop can go missing while wait4
+	// is already sleeping; a fresh wait4 call sees the recorded status.
+	// See #4429.
+	for {
+		wpid, err := sys.Wait4(pid, &s, sys.WNOHANG, nil)
+		if err != nil || wpid != 0 {
+			return wpid, &s, err
+		}
+		time.Sleep(time.Millisecond)
+	}
 }
 
 // Only used in this file
