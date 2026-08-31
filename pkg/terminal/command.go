@@ -552,7 +552,7 @@ Saves the configuration file to disk, overwriting the current configuration file
 
 Changes the value of simple configuration parameters.
 
-Use 'help config <parameter>' for more informations on specific configuration options.
+Use 'help config <parameter>' for more information on specific configuration options.
 `},
 
 		{aliases: []string{"edit", "ed"}, cmdFn: edit, helpMsg: `Open where you are in $DELVE_EDITOR or $EDITOR
