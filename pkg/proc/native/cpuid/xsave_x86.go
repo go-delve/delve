@@ -58,3 +58,28 @@ func AMD64XstateZMMHi256Offset() int {
 	})
 	return xstateZMMHi256Offset
 }
+
+var xstateHi16ZMMOffset int
+var loadXstateHi16ZMMOffsetOnce sync.Once
+
+// AMD64XstateHi16ZMMOffset probes Hi16_ZMM offset of the current CPU. Beware
+// that core dumps may be generated from a different CPU.
+func AMD64XstateHi16ZMMOffset() int {
+	loadXstateHi16ZMMOffsetOnce.Do(func() {
+		// See Intel 64 and IA-32 Architecture Software Developer's Manual, Vol. 1
+		// chapter 13.2 and Vol. 2A CPUID instruction for a description of all the
+		// magic constants.
+
+		_, _, cx, _ := cpuid(0x01, 0x00)
+
+		if cx&(1<<26) == 0 { // Vol. 2A, Table 3-10, XSAVE enabled bit check
+			// XSAVE not supported by this processor
+			xstateHi16ZMMOffset = 0
+			return
+		}
+
+		_, bx, _, _ := cpuid(0x0d, 0x07) // Hi16_ZMM is component #7
+		xstateHi16ZMMOffset = int(bx)
+	})
+	return xstateHi16ZMMOffset
+}

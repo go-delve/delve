@@ -13,11 +13,13 @@ import (
 // Manual, Volume 1: Basic Architecture.
 type AMD64Xstate struct {
 	AMD64PtraceFpRegs
-	Xsave       []byte // raw xsave area
-	AvxState    bool   // contains AVX state
-	YmmSpace    [256]byte
-	Avx512State bool // contains AVX512 state
-	ZmmSpace    [512]byte
+	Xsave        []byte // raw xsave area
+	AvxState     bool   // contains AVX state
+	YmmSpace     [256]byte
+	Avx512State  bool // contains AVX512 state
+	ZmmSpace     [512]byte
+	Hi16ZmmState bool // contains ZMM16 through ZMM31
+	Hi16ZmmSpace [1024]byte
 
 	zmmHi256offset int
 }
@@ -70,6 +72,13 @@ func (xstate *AMD64Xstate) Decode() []proc.Register {
 		}
 	}
 
+	if xstate.Hi16ZmmState {
+		for i := 0; i < len(xstate.Hi16ZmmSpace); i += 64 {
+			n := i / 64
+			regs = proc.AppendBytesRegister(regs, fmt.Sprintf("XMM%d", n+16), xstate.Hi16ZmmSpace[i:i+64])
+		}
+	}
+
 	return regs
 }
 
@@ -89,7 +98,7 @@ type xstate_bv uint64
 
 func (s xstate_bv) hasAVX() bool       { return s&(1<<2) != 0 }
 func (s xstate_bv) hasZMM_Hi256() bool { return s&(1<<6) != 0 }
-func (s xstate_bv) hasHi16_ZMM() bool  { return s&(1<<7) != 0 } //lint:ignore U1000 future use
+func (s xstate_bv) hasHi16_ZMM() bool  { return s&(1<<7) != 0 }
 func (s xstate_bv) hasPKRU() bool      { return s&(1<<9) != 0 }
 
 // AMD64XstateRead reads a byte array containing an XSAVE area into regset.
@@ -97,8 +106,8 @@ func (s xstate_bv) hasPKRU() bool      { return s&(1<<9) != 0 }
 // contents of the legacy region of the XSAVE area.
 // See Section 13.1 (and following) of Intel® 64 and IA-32 Architectures
 // Software Developer’s Manual, Volume 1: Basic Architecture.
-// If xstateZMMHi256Offset is zero, it will be guessed.
-func AMD64XstateRead(xstateargs []byte, readLegacy bool, regset *AMD64Xstate, xstateZMMHi256Offset int) error {
+// If either component offset is zero, it will be guessed.
+func AMD64XstateRead(xstateargs []byte, readLegacy bool, regset *AMD64Xstate, xstateZMMHi256Offset, xstateHi16ZMMOffset int) error {
 	if _XSAVE_HEADER_START+_XSAVE_HEADER_LEN >= len(xstateargs) {
 		return nil
 	}
@@ -118,19 +127,13 @@ func AMD64XstateRead(xstateargs []byte, readLegacy bool, regset *AMD64Xstate, xs
 		return nil
 	}
 
-	if !xstate_bv.hasAVX() {
-		return nil
+	if xstate_bv.hasAVX() {
+		avxstate := xstateargs[_XSAVE_EXTENDED_REGION_START:]
+		regset.AvxState = true
+		copy(regset.YmmSpace[:], avxstate[:len(regset.YmmSpace)])
 	}
 
-	avxstate := xstateargs[_XSAVE_EXTENDED_REGION_START:]
-	regset.AvxState = true
-	copy(regset.YmmSpace[:], avxstate[:len(regset.YmmSpace)])
-
-	if !xstate_bv.hasZMM_Hi256() {
-		return nil
-	}
-
-	if xstateZMMHi256Offset == 0 {
+	if xstateZMMHi256Offset == 0 && (xstate_bv.hasZMM_Hi256() || (xstate_bv.hasHi16_ZMM() && xstateHi16ZMMOffset == 0)) {
 		// Guess ZMM_Hi256 component offset
 		// ref: https://github.com/bminor/binutils-gdb/blob/df89bdf0baf106c3b0a9fae53e4e48607a7f3f87/gdb/i387-tdep.c#L916
 		if xcr0.hasPKRU() && len(xstateargs) == 2440 {
@@ -142,15 +145,24 @@ func AMD64XstateRead(xstateargs []byte, readLegacy bool, regset *AMD64Xstate, xs
 		}
 	}
 
-	regset.zmmHi256offset = xstateZMMHi256Offset
+	if xstate_bv.hasZMM_Hi256() {
+		regset.zmmHi256offset = xstateZMMHi256Offset
 
-	avx512state := xstateargs[xstateZMMHi256Offset:]
-	regset.Avx512State = true
-	copy(regset.ZmmSpace[:], avx512state[:len(regset.ZmmSpace)])
+		avx512state := xstateargs[xstateZMMHi256Offset:]
+		regset.Avx512State = true
+		copy(regset.ZmmSpace[:], avx512state[:len(regset.ZmmSpace)])
+	}
 
-	// TODO(aarzilli): if xstate_bv.hasHi16_ZMM() is set then xstateargs[1664:2688]
-	// contains ZMM16 through ZMM31, those aren't just the higher 256bits, it's
-	// the full register so each is 64 bytes (512bits)
+	if xstate_bv.hasHi16_ZMM() {
+		if xstateHi16ZMMOffset == 0 {
+			xstateHi16ZMMOffset = xstateZMMHi256Offset + len(regset.ZmmSpace)
+		}
+		if xstateHi16ZMMOffset < 0 || xstateHi16ZMMOffset > len(xstateargs)-len(regset.Hi16ZmmSpace) {
+			return fmt.Errorf("Hi16_ZMM state at offset %d exceeds XSAVE area of %d bytes", xstateHi16ZMMOffset, len(xstateargs))
+		}
+		regset.Hi16ZmmState = true
+		copy(regset.Hi16ZmmSpace[:], xstateargs[xstateHi16ZMMOffset:])
+	}
 
 	return nil
 }
