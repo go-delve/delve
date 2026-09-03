@@ -74,21 +74,12 @@ func GoTestBuildCombinedOutput(debugname string, pkgs []string, buildflags any) 
 }
 
 func goBuildArgs(debugname string, pkgs []string, buildflags string, isTest bool) []string {
-	var args []string
-
-	bfv := config.SplitQuotedFields(buildflags, '\'')
-	if len(bfv) >= 2 && bfv[0] == "-C" {
-		args = append(args, bfv[:2]...)
-		bfv = bfv[2:]
-	} else if len(bfv) >= 1 && strings.HasPrefix(bfv[0], "-C=") {
-		args = append(args, bfv[0])
-		bfv = bfv[1:]
-	}
-
-	args = append(args, "-o", debugname)
+	leading, bfv := splitLeadingGoDir(config.SplitQuotedFields(buildflags, '\''))
+	args := append([]string{}, leading...)
 	if isTest {
-		args = append([]string{"-c"}, args...)
+		args = append(args, "-c")
 	}
+	args = append(args, "-o", debugname)
 	args = append(args, "-gcflags", "all=-N -l")
 	if buildflags != "" {
 		args = append(args, bfv...)
@@ -105,17 +96,34 @@ func goBuildArgs2(debugname string, pkgs []string, buildflags any, isTest bool) 
 		return goBuildArgs(debugname, pkgs, buildflags, isTest), nil
 	case nil:
 	case []string:
-		args = append(args, buildflags...)
+		leading, rest := splitLeadingGoDir(buildflags)
+		args = append(args, leading...)
+		if isTest {
+			args = append(args, "-c")
+		}
+		args = append(args, rest...)
+		args = append(args, "-o", debugname, "-gcflags", "all=-N -l")
+		return append(args, pkgs...), nil
 	default:
 		return nil, fmt.Errorf("invalid buildflags type %T", buildflags)
 	}
 
-	args = append(args, "-o", debugname)
 	if isTest {
-		args = append([]string{"-c"}, args...)
+		args = append(args, "-c")
 	}
+	args = append(args, "-o", debugname)
 	args = append(args, "-gcflags", "all=-N -l")
 	return append(args, pkgs...), nil
+}
+
+func splitLeadingGoDir(args []string) (leading, rest []string) {
+	if len(args) >= 2 && args[0] == "-C" {
+		return args[:2], args[2:]
+	}
+	if len(args) >= 1 && strings.HasPrefix(args[0], "-C=") {
+		return args[:1], args[1:]
+	}
+	return nil, args
 }
 
 func gocommandRun(command string, args ...string) error {
