@@ -691,7 +691,7 @@ func TestRangeOverFuncNext(t *testing.T) {
 			testseq2intl(t, fixture, grp, p, nil, []seqTest{
 				h.funcBreak(t, "main.TestTrickyIterAll"),
 				{contContinue, 24}, // TestTrickyIterAll
-				h.ifcond(runtime.GOARCH == "arm64" && goversion.VersionAfterOrEqual(runtime.Version(), 1, 25), h.nop, nx(25)),
+				h.ifcond(runtime.GOARCH == "arm64" || runtime.GOARCH == "loong64" && goversion.VersionAfterOrEqual(runtime.Version(), 1, 25), h.nop, nx(25)),
 				nx(26),
 				nx(27), // for _, x := range ...
 				assertLocals(t, "trickItAll", "i"),
@@ -720,7 +720,7 @@ func TestRangeOverFuncNext(t *testing.T) {
 			testseq2intl(t, fixture, grp, p, nil, []seqTest{
 				h.funcBreak(t, "main.TestTrickyIterAll2"),
 				{contContinue, 37}, // TestTrickyIterAll2
-				h.ifcond(runtime.GOARCH == "arm64" && goversion.VersionAfterOrEqual(runtime.Version(), 1, 25), h.nop, nx(38)),
+				h.ifcond(runtime.GOARCH == "arm64" || runtime.GOARCH == "loong64" && goversion.VersionAfterOrEqual(runtime.Version(), 1, 25), h.nop, nx(38)),
 				nx(39),
 				nx(40), // for _, x := range...
 				nx(41),
@@ -1042,7 +1042,7 @@ func TestRangeOverFuncNext(t *testing.T) {
 			testseq2intl(t, fixture, grp, p, nil, []seqTest{
 				h.funcBreak(t, "main.TestGotoA1"),
 				{contContinue, 192},
-				h.ifcond(runtime.GOARCH != "arm64" || !goversion.VersionAfterOrEqual(runtime.Version(), 1, 27), nx(193), h.nop),
+				h.ifcond(runtime.GOARCH != "arm64" && runtime.GOARCH != "loong64" || !goversion.VersionAfterOrEqual(runtime.Version(), 1, 27), nx(193), h.nop),
 				nx(194), // for _, x := range (x == -1)
 				nx(195), // result = append(result, x)
 				nx(196), // if x == -4
@@ -1152,7 +1152,7 @@ func TestRangeOverFuncNextInlined(t *testing.T) {
 			testseq2intl(t, fixture, grp, p, nil, []seqTest{
 				h.funcBreak(t, "main.TestTrickyIterAll"),
 				{contContinue, 24}, // TestTrickyIterAll
-				h.ifcond(runtime.GOARCH != "arm64" || !goversion.VersionAfterOrEqual(runtime.Version(), 1, 27), nx(25), h.nop),
+				h.ifcond(runtime.GOARCH != "arm64" && runtime.GOARCH != "loong64"|| !goversion.VersionAfterOrEqual(runtime.Version(), 1, 27), nx(25), h.nop),
 				nx(26),
 				nx(27), // for _, x := range ...
 				assertLocals(t, "trickItAll", "i"),
@@ -1181,7 +1181,7 @@ func TestRangeOverFuncNextInlined(t *testing.T) {
 			testseq2intl(t, fixture, grp, p, nil, []seqTest{
 				h.funcBreak(t, "main.TestTrickyIterAll2"),
 				{contContinue, 37}, // TestTrickyIterAll2
-				h.ifcond(runtime.GOARCH != "arm64" || !goversion.VersionAfterOrEqual(runtime.Version(), 1, 27), nx(38), h.nop),
+				h.ifcond(runtime.GOARCH != "arm64" && runtime.GOARCH != "loong64" || !goversion.VersionAfterOrEqual(runtime.Version(), 1, 27), nx(38), h.nop),
 				nx(39),
 				nx(40), // for _, x := range...
 				nx(41),
@@ -1523,7 +1523,7 @@ func TestRangeOverFuncNextInlined(t *testing.T) {
 			testseq2intl(t, fixture, grp, p, nil, []seqTest{
 				h.funcBreak(t, "main.TestGotoA1"),
 				{contContinue, 192},
-				h.ifcond(runtime.GOARCH != "arm64" || !goversion.VersionAfterOrEqual(runtime.Version(), 1, 27), nx(193), h.nop),
+				h.ifcond(runtime.GOARCH != "arm64" && runtime.GOARCH != "loong64" || !goversion.VersionAfterOrEqual(runtime.Version(), 1, 27), nx(193), h.nop),
 				nx(194), // for _, x := range (x == -1)
 				nx(195), // result = append(result, x)
 				nx(196), // if x == -4
@@ -1559,7 +1559,7 @@ func TestRangeOverFuncNextInlined(t *testing.T) {
 			testseq2intl(t, fixture, grp, p, nil, []seqTest{
 				h.funcBreak(t, "main.TestGotoB1"),
 				{contContinue, 211},
-				h.ifcond(runtime.GOARCH != "arm64" || !goversion.VersionAfterOrEqual(runtime.Version(), 1, 27), nx(212), h.nop),
+				h.ifcond(runtime.GOARCH != "arm64" && runtime.GOARCH != "loong64" || !goversion.VersionAfterOrEqual(runtime.Version(), 1, 27), nx(212), h.nop),
 				nx(213), // for _, x := range (x == -1)
 				nx(214), // result = append(result, x)
 				nx(215), // if x == -4
