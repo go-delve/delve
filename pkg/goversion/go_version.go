@@ -223,6 +223,9 @@ func (v *GoVersion) IsDevelBuild() bool {
 
 func (v *GoVersion) String() string {
 	switch {
+	case v.Rev == versionedDevel:
+		// versioned development build
+		return fmt.Sprintf("devel go%d.%d", v.Major, v.Minor)
 	case v.Rev < betaStart:
 		// beta version
 		return fmt.Sprintf("go%d.%dbeta%d", v.Major, v.Minor, v.Rev-betaEnd)

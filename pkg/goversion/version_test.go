@@ -95,10 +95,27 @@ func TestRoundtrip(t *testing.T) {
 		"go1.8.1.typealias",
 		"go1.21.1-something",
 		"go1.21.0",
+		"devel go1.24",
+		"devel go1.25",
 	} {
 		pver := parseVer(t, verStr)
 		if pver.String() != verStr {
 			t.Fatalf("roundtrip mismatch <%s> -> %#v -> <%s>", verStr, pver, pver.String())
+		}
+	}
+}
+
+func TestDevelopmentVersionString(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		ver  GoVersion
+		want string
+	}{
+		{GoVersion{Major: 1, Minor: 24, Rev: versionedDevel}, "devel go1.24"},
+		{GoVersion{Major: 1, Minor: 25, Rev: versionedDevel}, "devel go1.25"},
+	} {
+		if got := tc.ver.String(); got != tc.want {
+			t.Errorf("development version formatted as %q, want %q", got, tc.want)
 		}
 	}
 }
