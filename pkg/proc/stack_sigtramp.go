@@ -86,6 +86,8 @@ func (it *stackIterator) readSigtrampgoContext() (*op.DwarfRegisters, error) {
 			return sigtrampContextLinuxLOONG64(it.mem, addr)
 		case "riscv64":
 			return sigtrampContextLinuxRISCV64(it.mem, addr)
+		case "ppc64le":
+			return sigtrampContextLinuxPPC64LE(it.mem, addr)
 		default:
 			return nil, errors.New("not implemented")
 		}
@@ -479,6 +481,72 @@ func sigtrampContextLinuxRISCV64(mem MemoryReader, addr uint64) (*op.DwarfRegist
 	return op.NewDwarfRegisters(0, dregs, binary.LittleEndian, regnum.RISCV64_PC, regnum.RISCV64_SP, regnum.RISCV64_FP, regnum.RISCV64_LR), nil
 }
 
+func sigtrampContextLinuxPPC64LE(mem MemoryReader, addr uint64) (*op.DwarfRegisters, error) {
+	// Structs come from Go's src/runtime/defs_linux_ppc64le.go:179
+	type ptregs struct {
+		gpr       [32]uint64
+		nip       uint64
+		msr       uint64
+		orig_gpr3 uint64
+		ctr       uint64
+		link      uint64
+		xer       uint64
+		ccr       uint64
+		softe     uint64
+		trap      uint64
+		dar       uint64
+		dsisr     uint64
+		result    uint64
+	}
+
+	type vreg struct {
+		u [4]uint32
+	}
+
+	type stackt struct {
+		ss_sp     *byte
+		ss_flags  int32
+		pad_cgo_0 [4]byte
+		ss_size   uintptr
+	}
+
+	type sigcontext struct {
+		_unused     [4]uint64
+		signal      int32
+		_pad0       int32
+		handler     uint64
+		oldmask     uint64
+		regs        *ptregs
+		gp_regs     [48]uint64
+		fp_regs     [33]float64
+		v_regs      *vreg
+		vmx_reserve [101]int64
+	}
+
+	type ucontext struct {
+		uc_flags    uint64
+		uc_link     *ucontext
+		uc_stack    stackt
+		uc_sigmask  uint64
+		__unused    [15]uint64
+		uc_mcontext sigcontext
+	}
+
+	buf := make([]byte, unsafe.Sizeof(ucontext{}))
+	_, err := mem.ReadMemory(buf, addr)
+	if err != nil {
+		return nil, err
+	}
+	sc := &(((*ucontext)(unsafe.Pointer(&buf[0]))).uc_mcontext)
+	pt := (*ptregs)(unsafe.Pointer(&sc.gp_regs[0]))
+	dregs := make([]*op.DwarfRegister, regnum.PPC64LEMaxRegNum()+1)
+	for i := range pt.gpr {
+		dregs[regnum.PPC64LE_R0+i] = op.DwarfRegisterFromUint64(pt.gpr[i])
+	}
+	dregs[regnum.PPC64LE_PC] = op.DwarfRegisterFromUint64(pt.nip)
+	dregs[regnum.PPC64LE_LR] = op.DwarfRegisterFromUint64(pt.link)
+	return op.NewDwarfRegisters(0, dregs, binary.LittleEndian, regnum.PPC64LE_PC, regnum.PPC64LE_SP, regnum.PPC64LE_SP, regnum.PPC64LE_LR), nil
+}
 func sigtrampContextFreebsdAMD64(mem MemoryReader, addr uint64) (*op.DwarfRegisters, error) {
 	type mcontext struct {
 		mc_onstack       uint64
