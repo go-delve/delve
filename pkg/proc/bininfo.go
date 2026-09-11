@@ -76,6 +76,11 @@ type BinaryInfo struct {
 	// SymNames maps addr to a description *elf.Symbol of this addr.
 	SymNames map[uint64]*elf.Symbol
 
+       // ppc64leLocalEntry maps a function's global entry point (DWARF low_pc) to
+       // its ppc64le ELFv2 local-entry offset, decoded from the st_other byte of
+       // the function's ELF symbol. Populated and consulted only on ppc64le.
+       ppc64leLocalEntry map[uint64]uint64
+
 	// Images is a list of loaded shared libraries (also known as
 	// shared objects on linux or DLLs on windows).
 	Images []*Image
@@ -414,11 +419,42 @@ func FirstPCAfterPrologue(p Process, fn *Function, sameline bool) (uint64, error
 		// breakpoint with file:line and with the function name always result on
 		// the same instruction being selected.
 		if pc2, _, _, ok := fn.cu.lineInfo.FirstStmt(fn.Entry, fn.End); ok {
-			return pc2, nil
+			pc = pc2
 		}
 	}
 
-	return pc, nil
+       return p.BinInfo().localEntry(fn, pc), nil
+
+}
+
+// localEntry returns the ppc64le ELFv2 local entry point of fn, clamping pc
+// forward to it when pc falls inside the function's global-entry stub.
+//
+// On ppc64le DWARF low_pc (fn.Entry) is the global entry point, which begins
+// with a TOC (r2) setup stub. However, Callers in the same module (for example
+// the cgo trampoline calling a C function) already share the TOC and enter at
+// the local entry point. A breakpoint placed at global entry point never executes.
+// gcc does not emit DW_LNS_set_prologue_end, so PrologueEndPC cannot advance past
+// the stub on its own; use the local entry offset recorded in the ELF symbol
+// instead.
+//
+// On other architectures, for functions without a local entry offset, or when
+// pc is already past the local entry point, this becomes a no-op.
+func (bi *BinaryInfo) localEntry(fn *Function, pc uint64) uint64 {
+       if bi.Arch.Name != "ppc64le" {
+               return pc
+       }
+       // The local-entry offset was decoded from the function's ELF symbol st_other
+       // byte in loadSymbolName. A missing entry (stripped symbol) leaves pc as-is.
+       offset, ok := bi.ppc64leLocalEntry[fn.Entry]
+       if !ok {
+               return pc
+       }
+       localEntry := fn.Entry + offset
+       if pc < localEntry {
+               return localEntry
+       }
+       return pc
 }
 
 func findRetPC(t *Target, name string) ([]uint64, error) {
@@ -1874,6 +1910,11 @@ func (bi *BinaryInfo) loadSymbolName(image *Image, file *elf.File, wg *sync.Wait
 	if bi.SymNames == nil {
 		bi.SymNames = make(map[uint64]*elf.Symbol)
 	}
+       ppc64le := bi.Arch.Name == "ppc64le"
+       if ppc64le && bi.ppc64leLocalEntry == nil {
+               bi.ppc64leLocalEntry = make(map[uint64]uint64)
+       }
+ 
 	symSecs, _ := file.Symbols()
 	for _, symSec := range symSecs {
 		if symSec.Info == _STT_FUNC { // TODO(chainhelen), need to parse others types.
@@ -1881,6 +1922,15 @@ func (bi *BinaryInfo) loadSymbolName(image *Image, file *elf.File, wg *sync.Wait
 			bi.SymNames[symSec.Value+image.StaticBase] = &s
 		}
 	}
+               if ppc64le && elf.ST_TYPE(symSec.Info) == _STT_FUNC {
+                       // PPC64 ELFv2 ABI, matches binutils PPC64_LOCAL_ENTRY_OFFSET: bits 5-7
+                       // of st_other encode the offset as ((1<<k)>>2)<<2 bytes
+                       // (0,0,4,8,16,32,64). Recorded for both local and global functions so
+                       // FirstPCAfterPrologue can skip the global-entry TOC stub.
+                       bits := (symSec.Other >> 5) & 0x7
+                       bi.ppc64leLocalEntry[symSec.Value+image.StaticBase] = uint64(((1 << bits) >> 2) << 2)
+               }
+
 }
 
 func (bi *BinaryInfo) loadBuildID(image *Image, file *elf.File) {
