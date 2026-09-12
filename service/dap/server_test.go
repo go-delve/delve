@@ -64,7 +64,7 @@ func TestMain(m *testing.M) {
 	logflags.Setup(logOutput != "", logOutput, "")
 	protest.DefaultTestBackend(&testBackend)
 	protest.RunTestsWithFixtures(m)
-	if runtime.GOOS == "linux" && runtime.GOARCH == "386" && isTeamCityTest {
+	if runtime.GOOS == "linux" && (runtime.GOARCH == "386" || runtime.GOARCH == "arm64") && isTeamCityTest {
 		fmt.Printf("=== Output of ps aux ===\n")
 		cmd := exec.Command("ps", "aux")
 		cmd.Stdout = os.Stdout
