@@ -98,6 +98,8 @@ func arm64LinkerTrampolineTarget(name string, pc uint64, instructions []AsmInstr
 		return 0, false, false
 	}
 
+	// ADRP forms its result by clearing the low 12 bits of the instruction
+	// address (aligning it to a 4 KiB page) and adding its signed immediate.
 	page := pc &^ 0xfff
 	if adrpoff < 0 {
 		offset := uint64(-adrpoff)
@@ -123,9 +125,11 @@ func arm64LinkerTrampolineTarget(name string, pc uint64, instructions []AsmInstr
 			!srcok || arm64asm.Reg(src) != arm64asm.X16 || !immok {
 			return 0, false, false
 		}
-		// ImmShift does not export its value, so extract only the immediate
-		// after the decoder has established the opcode and operand types.
-		offset = uint64(load.Enc>>10&0xfff) << (12 * ((load.Enc >> 22) & 0x1))
+		// ADD (immediate) stores imm12 in bits 10 through 21. Bit 22 selects
+		// whether imm12 is used directly or shifted left by 12 bits.
+		imm12 := uint64(load.Enc>>10) & 0xfff
+		shift := uint(load.Enc>>22) & 0x1
+		offset = imm12 << (12 * shift)
 	case arm64asm.LDR:
 		dst, dstok := load.Args[0].(arm64asm.Reg)
 		mem, memok := load.Args[1].(arm64asm.MemImmediate)
@@ -133,9 +137,10 @@ func arm64LinkerTrampolineTarget(name string, pc uint64, instructions []AsmInstr
 			arm64asm.Reg(mem.Base) != arm64asm.X16 || mem.Mode != arm64asm.AddrOffset {
 			return 0, false, false
 		}
-		// MemImmediate does not export its offset. X16 establishes that this is
-		// the 64-bit form, whose encoded immediate is scaled by eight.
-		offset = uint64(load.Enc>>10&0xfff) << 3
+		// LDR (unsigned immediate) also stores imm12 in bits 10 through 21.
+		// The 64-bit form scales that value by the eight-byte operand size.
+		imm12 := uint64(load.Enc>>10) & 0xfff
+		offset = imm12 << 3
 		indirect = true
 	default:
 		return 0, false, false

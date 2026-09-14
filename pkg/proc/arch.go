@@ -47,12 +47,13 @@ type Arch struct {
 	// register name will be returned.
 	DwarfRegisterToString DwarfRegisterToStringFunc
 	// inhibitStepInto returns whether StepBreakpoint can be set at pc.
-	inhibitStepInto func(bi *BinaryInfo, pc uint64) bool
+	inhibitStepInto     func(bi *BinaryInfo, pc uint64) bool
+	RegisterNameToDwarf func(s string) (int, bool)
+	RegnumToString      func(uint64) string
+
 	// resolveCallTrampoline resolves the destination of an architecture-specific
 	// call trampoline.
 	resolveCallTrampolineFn func(Process, *Function, uint64) (uint64, bool)
-	RegisterNameToDwarf     func(s string) (int, bool)
-	RegnumToString          func(uint64) string
 	// debugCallMinStackSize is the minimum stack size for call injection on this architecture.
 	debugCallMinStackSize uint64
 	// maxRegArgBytes is extra padding for ABI1 call injections, equivalent to
