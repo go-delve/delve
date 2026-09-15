@@ -2557,12 +2557,12 @@ func loadBinaryInfoGoRuntimeCommon(bi *BinaryInfo, image *Image, cu *compileUnit
 	return nil
 }
 
-// addPCLNTrampolineFunctions adds linker-generated trampolines that do not have
+// addPcLnTrampolineFunctions adds linker-generated trampolines that do not have
 // a corresponding DWARF entry. Function names are compared within one image;
 // entry PCs and ranges prevent aliases or externally inserted functions from
 // creating overlapping entries. DWARF remains authoritative when both sources
 // describe the same function.
-func (bi *BinaryInfo) addPCLNTrampolineFunctions(image *Image) {
+func (bi *BinaryInfo) addPcLnTrampolineFunctions(image *Image) {
 	if image.symTable == nil {
 		return
 	}
@@ -2829,7 +2829,7 @@ func (bi *BinaryInfo) loadDebugInfoMaps(image *Image, debugInfoBytes, debugLineB
 	slices.SortFunc(image.compileUnits, func(a, b *compileUnit) int { return cmp.Compare(a.offset, b.offset) })
 	slices.SortFunc(bi.Functions, func(a, b Function) int { return cmp.Compare(a.Entry, b.Entry) })
 	slices.SortFunc(bi.packageVars, func(a, b packageVar) int { return cmp.Compare(a.addr, b.addr) })
-	bi.addPCLNTrampolineFunctions(image)
+	bi.addPcLnTrampolineFunctions(image)
 
 	bi.lookupFunc = nil
 	bi.lookupGenericFunc = nil
