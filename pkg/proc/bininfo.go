@@ -76,11 +76,6 @@ type BinaryInfo struct {
 	// SymNames maps addr to a description *elf.Symbol of this addr.
 	SymNames map[uint64]*elf.Symbol
 
-       // ppc64leLocalEntry maps a function's global entry point (DWARF low_pc) to
-       // its ppc64le ELFv2 local-entry offset, decoded from the st_other byte of
-       // the function's ELF symbol. Populated and consulted only on ppc64le.
-       ppc64leLocalEntry map[uint64]uint64
-
 	// Images is a list of loaded shared libraries (also known as
 	// shared objects on linux or DLLs on windows).
 	Images []*Image
@@ -423,7 +418,7 @@ func FirstPCAfterPrologue(p Process, fn *Function, sameline bool) (uint64, error
 		}
 	}
 
-       return p.BinInfo().localEntry(fn, pc), nil
+	return p.BinInfo().localEntry(fn, pc), nil
 
 }
 
@@ -441,20 +436,22 @@ func FirstPCAfterPrologue(p Process, fn *Function, sameline bool) (uint64, error
 // On other architectures, for functions without a local entry offset, or when
 // pc is already past the local entry point, this becomes a no-op.
 func (bi *BinaryInfo) localEntry(fn *Function, pc uint64) uint64 {
-       if bi.Arch.Name != "ppc64le" {
-               return pc
-       }
-       // The local-entry offset was decoded from the function's ELF symbol st_other
-       // byte in loadSymbolName. A missing entry (stripped symbol) leaves pc as-is.
-       offset, ok := bi.ppc64leLocalEntry[fn.Entry]
-       if !ok {
-               return pc
-       }
-       localEntry := fn.Entry + offset
-       if pc < localEntry {
-               return localEntry
-       }
-       return pc
+	if bi.Arch.Name != "ppc64le" {
+		return pc
+	}
+	// obtain symbol info using global entry point to compute local entry point
+	sym := bi.SymNames[fn.Entry]
+	if sym == nil {
+		return pc
+	}
+	// compute local entry point
+	// bits 5-7 of st_other encode the offset as ((1<<k)>>2)<<2 bytes (0,0,4,8,16,32,64).
+	bits := (sym.Other >> 5) & 0x7
+	localEntry := fn.Entry + uint64(((1<<bits)>>2)<<2)
+	if pc < localEntry {
+		return localEntry
+	}
+	return pc
 }
 
 func findRetPC(t *Target, name string) ([]uint64, error) {
@@ -1910,27 +1907,22 @@ func (bi *BinaryInfo) loadSymbolName(image *Image, file *elf.File, wg *sync.Wait
 	if bi.SymNames == nil {
 		bi.SymNames = make(map[uint64]*elf.Symbol)
 	}
-       ppc64le := bi.Arch.Name == "ppc64le"
-       if ppc64le && bi.ppc64leLocalEntry == nil {
-               bi.ppc64leLocalEntry = make(map[uint64]uint64)
-       }
- 
+	// On ppc64le, localEntry needs the st_other byte of global functions too, so
+	// match on the type bits of st_info. Comparing the whole byte to _STT_FUNC
+	// (as done on other arches) keeps only local functions (st_info 0x02) and
+	// drops global ones (st_info 0x12). Other arches keep the existing behavior.
+	ppc64le := bi.Arch.Name == "ppc64le"
 	symSecs, _ := file.Symbols()
 	for _, symSec := range symSecs {
-		if symSec.Info == _STT_FUNC { // TODO(chainhelen), need to parse others types.
+		isFunc := symSec.Info == _STT_FUNC // TODO(chainhelen), need to parse others types.
+		if ppc64le {
+			isFunc = elf.ST_TYPE(symSec.Info) == _STT_FUNC
+		}
+		if isFunc {
 			s := symSec
 			bi.SymNames[symSec.Value+image.StaticBase] = &s
 		}
 	}
-               if ppc64le && elf.ST_TYPE(symSec.Info) == _STT_FUNC {
-                       // PPC64 ELFv2 ABI, matches binutils PPC64_LOCAL_ENTRY_OFFSET: bits 5-7
-                       // of st_other encode the offset as ((1<<k)>>2)<<2 bytes
-                       // (0,0,4,8,16,32,64). Recorded for both local and global functions so
-                       // FirstPCAfterPrologue can skip the global-entry TOC stub.
-                       bits := (symSec.Other >> 5) & 0x7
-                       bi.ppc64leLocalEntry[symSec.Value+image.StaticBase] = uint64(((1 << bits) >> 2) << 2)
-               }
-
 }
 
 func (bi *BinaryInfo) loadBuildID(image *Image, file *elf.File) {
