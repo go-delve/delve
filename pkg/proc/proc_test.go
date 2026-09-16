@@ -1720,6 +1720,34 @@ func TestStepIntoFunction(t *testing.T) {
 	})
 }
 
+func TestStepIntoFunctionThroughARM64LinkerTrampoline(t *testing.T) {
+	skipUnlessOn(t, "linker trampoline instruction sequence is architecture-specific", "arm64")
+	skipOn(t, "PE pclntab loading is not supported", "windows")
+	withTestProcessArgs("linkertrampoline/", t, ".", nil, protest.LinkDebugTrampolines, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
+		assertNoError(grp.Continue(), t, "Continue() returned an error")
+
+		loc, err := proc.ThreadLocation(p.CurrentThread())
+		assertNoError(err, t, "ThreadLocation() returned an error")
+		text, err := proc.Disassemble(p.Memory(), nil, p.Breakpoints(), p.BinInfo(), loc.PC, loc.PC+4)
+		assertNoError(err, t, "Disassemble() returned an error")
+		if len(text) != 1 || text[0].DestLoc == nil || text[0].DestLoc.Fn == nil ||
+			!strings.HasSuffix(text[0].DestLoc.Fn.Name, "+0-tramp0") {
+			t.Fatalf("expected call destination to have a linker trampoline function, disassembled %#v", text)
+		}
+		if !text[0].DestLoc.Fn.Trampoline {
+			t.Fatal("expected pclntab linker trampoline to be marked as a trampoline")
+		}
+
+		assertNoError(grp.Step(), t, "Step() returned an error")
+
+		loc, err = proc.ThreadLocation(p.CurrentThread())
+		assertNoError(err, t, "ThreadLocation() returned an error")
+		if loc.Fn == nil || loc.Fn.Name != "github.com/go-delve/delve/_fixtures/linkertrampoline/callee.Call" {
+			t.Fatalf("expected to step through the linker trampoline into callee.Call, stopped at %#v", loc)
+		}
+	})
+}
+
 func TestIssue332_Part1(t *testing.T) {
 	// Next shouldn't step inside a function call
 	protest.AllowRecording(t)

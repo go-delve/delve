@@ -19,6 +19,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"sort"
 	"strconv"
@@ -48,6 +49,8 @@ const (
 	dwarfTreeCacheSize = 512  // size of the dwarfTree cache of each image
 )
 
+var linkerTrampolineName = regexp.MustCompile(`[+-][0-9a-f]+-tramp[0-9]+$`)
+
 // BinaryInfo holds information on the binaries being executed (this
 // includes both the executable and also any loaded libraries).
 type BinaryInfo struct {
@@ -59,7 +62,8 @@ type BinaryInfo struct {
 
 	DebugInfoDirectories []string
 
-	// Functions is a list of all DW_TAG_subprogram entries in debug_info, sorted by entry point
+	// Functions contains functions described by DWARF or pclntab, sorted by
+	// entry point. DWARF is preferred when both sources describe the same entry.
 	Functions []Function
 	// Sources is a list of all source files found in debug_line.
 	Sources []string
@@ -1781,6 +1785,7 @@ func loadBinaryInfoElf(bi *BinaryInfo, image *Image, path string, addr uint64, w
 			return err
 		}
 	}
+	loadBinaryInfoGoRuntimeSymTableElf(image, path, elfFile)
 
 	debugInfoBytes, err = godwarf.GetDebugSectionElf(dwarfFile, "info")
 	if err != nil {
@@ -2184,6 +2189,7 @@ func loadBinaryInfoMacho(bi *BinaryInfo, image *Image, path string, entryPoint u
 		}
 		return nil
 	}
+	loadBinaryInfoGoRuntimeSymTableMacho(image, path, exe)
 	debugInfoBytes, err := godwarf.GetDebugSectionMacho(exe, "info")
 	if err != nil {
 		return err
@@ -2369,6 +2375,36 @@ func macOSShortSectionNamesWorkaround(exe *macho.File) {
 
 // GO RUNTIME INFO ////////////////////////////////////////////////////////////
 
+// loadBinaryInfoGoRuntimeSymTableElf loads pclntab when it is present. Errors
+// are ignored because this is also called for binaries that were not produced
+// by the Go toolchain.
+func loadBinaryInfoGoRuntimeSymTableElf(image *Image, path string, elfFile *elf.File) {
+	defer func() {
+		if recover() != nil {
+			logflags.Bug.Inc()
+		}
+	}()
+	symTable, _, err := readPcLnTableElf(elfFile, path)
+	if err == nil {
+		image.symTable = symTable
+	}
+}
+
+// loadBinaryInfoGoRuntimeSymTableMacho loads pclntab when it is present. Errors
+// are ignored because this is also called for binaries that were not produced
+// by the Go toolchain.
+func loadBinaryInfoGoRuntimeSymTableMacho(image *Image, path string, exe *macho.File) {
+	defer func() {
+		if recover() != nil {
+			logflags.Bug.Inc()
+		}
+	}()
+	symTable, _, err := readPcLnTableMacho(exe, path)
+	if err == nil {
+		image.symTable = symTable
+	}
+}
+
 // loadBinaryInfoGoRuntimeElf loads information from the Go runtime sections
 // of an ELF binary, it is only called when debug info has been stripped.
 func loadBinaryInfoGoRuntimeElf(bi *BinaryInfo, image *Image, path string, elfFile *elf.File) (err error) {
@@ -2519,6 +2555,49 @@ func loadBinaryInfoGoRuntimeCommon(bi *BinaryInfo, image *Image, cu *compileUnit
 	sort.Strings(bi.Sources)
 	bi.Sources = slices.Compact(bi.Sources)
 	return nil
+}
+
+// addPcLnTrampolineFunctions adds linker-generated trampolines that do not have
+// a corresponding DWARF entry. Function names are compared within one image;
+// entry PCs and ranges prevent aliases or externally inserted functions from
+// creating overlapping entries. DWARF remains authoritative when both sources
+// describe the same function.
+func (bi *BinaryInfo) addPcLnTrampolineFunctions(image *Image) {
+	if image.symTable == nil {
+		return
+	}
+
+	staticBase := image.StaticBase
+	cu := &compileUnit{isgo: true, image: image}
+	merged := make([]Function, 0, len(bi.Functions))
+	dwarfIndex := 0
+	var previousDwarfEnd uint64
+	for i := range image.symTable.Funcs {
+		f := &image.symTable.Funcs[i]
+		if !linkerTrampolineName.MatchString(f.Name) {
+			continue
+		}
+		entry := f.Entry + staticBase
+		end := f.End + staticBase
+		for dwarfIndex < len(bi.Functions) && bi.Functions[dwarfIndex].Entry < entry {
+			previousDwarfEnd = max(previousDwarfEnd, bi.Functions[dwarfIndex].End)
+			merged = append(merged, bi.Functions[dwarfIndex])
+			dwarfIndex++
+		}
+		overlapsPrevious := previousDwarfEnd > entry
+		overlapsNext := dwarfIndex < len(bi.Functions) && bi.Functions[dwarfIndex].Entry < end
+		if overlapsPrevious || overlapsNext {
+			continue
+		}
+		merged = append(merged, Function{
+			Name:       f.Name,
+			Entry:      entry,
+			End:        end,
+			Trampoline: true,
+			cu:         cu,
+		})
+	}
+	bi.Functions = append(merged, bi.Functions[dwarfIndex:]...)
 }
 
 // FindType returns the requested type. The full type name must be used.
@@ -2750,6 +2829,7 @@ func (bi *BinaryInfo) loadDebugInfoMaps(image *Image, debugInfoBytes, debugLineB
 	slices.SortFunc(image.compileUnits, func(a, b *compileUnit) int { return cmp.Compare(a.offset, b.offset) })
 	slices.SortFunc(bi.Functions, func(a, b Function) int { return cmp.Compare(a.Entry, b.Entry) })
 	slices.SortFunc(bi.packageVars, func(a, b packageVar) int { return cmp.Compare(a.addr, b.addr) })
+	bi.addPcLnTrampolineFunctions(image)
 
 	bi.lookupFunc = nil
 	bi.lookupGenericFunc = nil

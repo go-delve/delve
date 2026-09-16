@@ -49,6 +49,7 @@ func ARM64Arch(goos string) *Arch {
 		ContextRegNum:                    regnum.ARM64_X0 + 26,
 		LRRegNum:                         regnum.ARM64_LR,
 		asmRegisters:                     arm64AsmRegisters,
+		resolveCallTrampolineFn:          resolveARM64LinkerTrampoline,
 		RegisterNameToDwarf:              nameToDwarfFunc(regnum.ARM64NameToDwarf),
 		RegnumToString:                   regnum.ARM64ToName,
 		debugCallMinStackSize:            288,

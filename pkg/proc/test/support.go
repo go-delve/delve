@@ -96,6 +96,9 @@ const (
 	// LinkDisableDWARF enables '-ldflags="-w"'.
 	LinkDisableDWARF
 	Trimpath
+	// LinkDebugTrampolines asks the linker to generate trampolines for
+	// cross-package calls.
+	LinkDebugTrampolines
 )
 
 // TempFile makes a (good enough) random temporary file name
@@ -152,6 +155,9 @@ func BuildFixture(t testing.TB, name string, flags BuildFlags) Fixture {
 	}
 	if flags&LinkDisableDWARF != 0 {
 		ldflagsv = append(ldflagsv, "-w")
+	}
+	if flags&LinkDebugTrampolines != 0 {
+		ldflagsv = append(ldflagsv, "-debugtramp=2")
 	}
 	buildFlags = append(buildFlags, "-ldflags="+strings.Join(ldflagsv, " "))
 	gcflagsv := []string{}

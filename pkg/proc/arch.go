@@ -50,6 +50,10 @@ type Arch struct {
 	inhibitStepInto     func(bi *BinaryInfo, pc uint64) bool
 	RegisterNameToDwarf func(s string) (int, bool)
 	RegnumToString      func(uint64) string
+
+	// resolveCallTrampoline resolves the destination of an architecture-specific
+	// call trampoline.
+	resolveCallTrampolineFn func(Process, *Function, uint64) (uint64, bool)
 	// debugCallMinStackSize is the minimum stack size for call injection on this architecture.
 	debugCallMinStackSize uint64
 	// maxRegArgBytes is extra padding for ABI1 call injections, equivalent to
@@ -95,6 +99,13 @@ func (a *Arch) PtrSize() int {
 // MaxInstructionLength is the maximum size in bytes of an instruction.
 func (a *Arch) MaxInstructionLength() int {
 	return a.maxInstructionLength
+}
+
+func (a *Arch) resolveCallTrampoline(p Process, fn *Function, pc uint64) (uint64, bool) {
+	if a.resolveCallTrampolineFn == nil {
+		return 0, false
+	}
+	return a.resolveCallTrampolineFn(p, fn, pc)
 }
 
 // BreakpointInstruction is the instruction that will trigger a breakpoint trap for

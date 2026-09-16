@@ -28,6 +28,16 @@ func readPcLnTableElf(exe *elf.File, path string) (*gosym.Table, uint64, error) 
 	}
 
 	addr := exe.Section(".text").Addr
+	// Pclntab PCs are relative to runtime.text, which can differ from the
+	// start of .text in externally linked binaries.
+	if symbols, err := exe.Symbols(); err == nil {
+		for i := range symbols {
+			if symbols[i].Name == "runtime.text" {
+				addr = symbols[i].Value
+				break
+			}
+		}
+	}
 	lineTable := gosym.NewLineTable(tableData, addr)
 	symTable, err := gosym.NewTable([]byte{}, lineTable)
 	if err != nil {
