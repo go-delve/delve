@@ -418,11 +418,10 @@ func FirstPCAfterPrologue(p Process, fn *Function, sameline bool) (uint64, error
 		}
 	}
 
-	return p.BinInfo().localEntry(fn, pc), nil
-
+	return p.BinInfo().ppc64leSkipToLocalEntry(fn, pc), nil
 }
 
-// localEntry returns the ppc64le ELFv2 local entry point of fn, clamping pc
+// ppc64leSkipToLocalEntry returns the ppc64le ELFv2 local entry point of fn, clamping pc
 // forward to it when pc falls inside the function's global-entry stub.
 //
 // On ppc64le DWARF low_pc (fn.Entry) is the global entry point, which begins
@@ -433,9 +432,15 @@ func FirstPCAfterPrologue(p Process, fn *Function, sameline bool) (uint64, error
 // the stub on its own; use the local entry offset recorded in the ELF symbol
 // instead.
 //
+// The offset is encoded in bits 5-7 of the symbol's st_other byte; see the
+// Power Architecture 64-Bit ELF V2 ABI Specification, section 3.4.1 "Symbol
+// Values" (https://openpowerfoundation.org/specifications/64bitelfabi/). The
+// decoding below matches binutils' PPC64_LOCAL_ENTRY_OFFSET macro in
+// include/elf/ppc64.h.
+
 // On other architectures, for functions without a local entry offset, or when
 // pc is already past the local entry point, this becomes a no-op.
-func (bi *BinaryInfo) localEntry(fn *Function, pc uint64) uint64 {
+func (bi *BinaryInfo) ppc64leSkipToLocalEntry(fn *Function, pc uint64) uint64 {
 	if bi.Arch.Name != "ppc64le" {
 		return pc
 	}
@@ -1907,18 +1912,14 @@ func (bi *BinaryInfo) loadSymbolName(image *Image, file *elf.File, wg *sync.Wait
 	if bi.SymNames == nil {
 		bi.SymNames = make(map[uint64]*elf.Symbol)
 	}
-	// On ppc64le, localEntry needs the st_other byte of global functions too, so
-	// match on the type bits of st_info. Comparing the whole byte to _STT_FUNC
-	// (as done on other arches) keeps only local functions (st_info 0x02) and
-	// drops global ones (st_info 0x12). Other arches keep the existing behavior.
-	ppc64le := bi.Arch.Name == "ppc64le"
 	symSecs, _ := file.Symbols()
 	for _, symSec := range symSecs {
-		isFunc := symSec.Info == _STT_FUNC // TODO(chainhelen), need to parse others types.
-		if ppc64le {
-			isFunc = elf.ST_TYPE(symSec.Info) == _STT_FUNC
-		}
-		if isFunc {
+		// Match on the type bits of st_info. Comparing the whole byte to
+		// _STT_FUNC would keep only local functions (st_info 0x02) and drop
+		// global (0x12) and weak (0x22) ones: ppc64leSkipToLocalEntry needs the
+		// st_other byte of global functions and i386InhibitStepInto needs the
+		// global __x86.get_pc_thunk.* symbols.
+		if elf.ST_TYPE(symSec.Info) == _STT_FUNC { // TODO(chainhelen), need to parse others types.
 			s := symSec
 			bi.SymNames[symSec.Value+image.StaticBase] = &s
 		}
