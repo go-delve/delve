@@ -52,16 +52,13 @@ func ppc64leFixFrameUnwindContext(fctxt *frame.FrameContext, pc uint64, bi *Bina
 		a.sigreturnfn = bi.lookupOneFunc("runtime.sigreturn")
 	}
 	if fctxt == nil || (a.sigreturnfn != nil && pc >= a.sigreturnfn.Entry && pc < a.sigreturnfn.End) {
+		// ppc64le has no dedicated frame pointer (DWARF BP is r1/SP).
 		return &frame.FrameContext{
 			RetAddrReg: regnum.PPC64LE_LR,
 			Regs: map[uint64]frame.DWRule{
-				regnum.PPC64LE_PC: {
-					Rule:   frame.RuleOffset,
-					Offset: int64(-a.PtrSize()),
-				},
 				regnum.PPC64LE_LR: {
-					Rule:   frame.RuleOffset,
-					Offset: int64(-2 * a.PtrSize()),
+					Rule: frame.RuleRegister,
+					Reg:  regnum.PPC64LE_LR,
 				},
 				regnum.PPC64LE_SP: {
 					Rule:   frame.RuleValOffset,
@@ -71,7 +68,7 @@ func ppc64leFixFrameUnwindContext(fctxt *frame.FrameContext, pc uint64, bi *Bina
 			CFA: frame.DWRule{
 				Rule:   frame.RuleCFA,
 				Reg:    regnum.PPC64LE_SP,
-				Offset: int64(2 * a.PtrSize()),
+				Offset: 0,
 			},
 		}
 	}
@@ -91,9 +88,8 @@ func ppc64leFixFrameUnwindContext(fctxt *frame.FrameContext, pc uint64, bi *Bina
 	}
 	if fctxt.Regs[regnum.PPC64LE_LR].Rule == frame.RuleUndefined {
 		fctxt.Regs[regnum.PPC64LE_LR] = frame.DWRule{
-			Rule:   frame.RuleFramePointer,
-			Reg:    regnum.PPC64LE_LR,
-			Offset: 0,
+			Rule: frame.RuleRegister,
+			Reg:  regnum.PPC64LE_LR,
 		}
 	}
 	return fctxt
@@ -152,7 +148,11 @@ func ppc64leSwitchStack(it *stackIterator, callFrameRegs *op.DwarfRegisters) boo
 			it.pc = newlr
 			return true
 		default:
-			if it.systemstack && it.top && it.g != nil && strings.HasPrefix(it.frame.Current.Fn.Name, "runtime.") && it.frame.Current.Fn.Name != "runtime.fatalthrow" {
+			name := it.frame.Current.Fn.Name
+			// Stay on the system stack for fatal-throw stops.
+			if it.systemstack && it.top && it.g != nil && strings.HasPrefix(name, "runtime.") &&
+				name != "runtime.fatalthrow" && name != "runtime.fatalsignal" &&
+				name != "runtime.throw" && name != "runtime.fatal" {
 				// The runtime switches to the system stack in multiple places.
 				// This usually happens through a call to runtime.systemstack but there
 				// are functions that switch to the system stack manually (for example
