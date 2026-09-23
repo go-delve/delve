@@ -414,11 +414,14 @@ func FirstPCAfterPrologue(p Process, fn *Function, sameline bool) (uint64, error
 		// breakpoint with file:line and with the function name always result on
 		// the same instruction being selected.
 		if pc2, _, _, ok := fn.cu.lineInfo.FirstStmt(fn.Entry, fn.End); ok {
-			pc = pc2
+			if p.BinInfo().Arch.Name == "ppc64le" {
+				pc2 = p.BinInfo().ppc64leSkipToLocalEntry(fn, pc2)
+			}
+			return pc2, nil
 		}
 	}
 
-	return p.BinInfo().ppc64leSkipToLocalEntry(fn, pc), nil
+	return pc, nil
 }
 
 // ppc64leSkipToLocalEntry returns the ppc64le ELFv2 local entry point of fn, clamping pc
@@ -1914,11 +1917,7 @@ func (bi *BinaryInfo) loadSymbolName(image *Image, file *elf.File, wg *sync.Wait
 	}
 	symSecs, _ := file.Symbols()
 	for _, symSec := range symSecs {
-		// Match on the type bits of st_info. Comparing the whole byte to
-		// _STT_FUNC would keep only local functions (st_info 0x02) and drop
-		// global (0x12) and weak (0x22) ones: ppc64leSkipToLocalEntry needs the
-		// st_other byte of global functions and i386InhibitStepInto needs the
-		// global __x86.get_pc_thunk.* symbols.
+		// match the st_info type bits so global and weak functions are included, not just local ones
 		if elf.ST_TYPE(symSec.Info) == _STT_FUNC { // TODO(chainhelen), need to parse others types.
 			s := symSec
 			bi.SymNames[symSec.Value+image.StaticBase] = &s
