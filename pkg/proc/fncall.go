@@ -511,7 +511,7 @@ func funcCallEvalFuncExpr(scope *EvalScope, stack *evalStack, fncall *functionCa
 	if fnvar.Kind != reflect.Func {
 		return fmt.Errorf("expression %q is not a function", astutil.ExprToString(fncall.expr.Fun))
 	}
-	fnvar.loadValue(LoadConfig{false, 0, 0, 0, 0, 0})
+	fnvar.loadValue(LoadConfig{FollowPointers: false})
 	if fnvar.Unreadable != nil {
 		return fnvar.Unreadable
 	}

@@ -1301,7 +1301,7 @@ func TestClientServer_SetVariable(t *testing.T) {
 			t.Fatalf("Continue(): %v\n", state.Err)
 		}
 
-		assertNoError(c.SetVariable(api.EvalScope{GoroutineID: -1}, "a2", "8"), t, "SetVariable()")
+		assertNoError(c.SetVariable(api.EvalScope{GoroutineID: -1}, "a2", "8", 0), t, "SetVariable()")
 
 		a2, err := c.EvalVariable(api.EvalScope{GoroutineID: -1}, "a2", normalLoadConfig)
 		if err != nil {
@@ -1463,7 +1463,7 @@ func TestIssue355(t *testing.T) {
 		assertError(err, t, "ListThreads()")
 		_, err = c.GetThread(tid)
 		assertError(err, t, "GetThread()")
-		assertError(c.SetVariable(api.EvalScope{GoroutineID: gid}, "a", "10"), t, "SetVariable()")
+		assertError(c.SetVariable(api.EvalScope{GoroutineID: gid}, "a", "10", 0), t, "SetVariable()")
 		_, err = c.ListLocalVariables(api.EvalScope{GoroutineID: gid}, normalLoadConfig)
 		assertError(err, t, "ListLocalVariables()")
 		_, err = c.ListFunctionArgs(api.EvalScope{GoroutineID: gid}, normalLoadConfig)

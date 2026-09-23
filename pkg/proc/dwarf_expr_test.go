@@ -253,9 +253,9 @@ func TestDwarfExprComposite(t *testing.T) {
 
 	// Test writes to composite memory
 
-	assertNoError(scope.SetVariable("n", "47"), t, "SetVariable(n, 47)")
-	assertNoError(scope.SetVariable("pair.k", "12"), t, "SetVariable(pair.k, 12)")
-	assertNoError(scope.SetVariable("pair.v", "13"), t, "SetVariable(pair.v, 13)")
+	assertNoError(scope.SetVariable("n", "47", 0), t, "SetVariable(n, 47)")
+	assertNoError(scope.SetVariable("pair.k", "12", 0), t, "SetVariable(pair.k, 12)")
+	assertNoError(scope.SetVariable("pair.v", "13", 0), t, "SetVariable(pair.v, 13)")
 
 	for i := range changeCalls {
 		t.Logf("%q\n", changeCalls[i])

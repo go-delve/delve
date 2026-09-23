@@ -951,7 +951,7 @@ const maxRangeFuncDefers = 10
 
 func (d *Defer) load(canrecur bool) {
 	v := d.variable // +rtype _defer
-	v.loadValue(LoadConfig{false, 1, 0, 0, -1, 0})
+	v.loadValue(LoadConfig{FollowPointers: false, MaxVariableRecurse: 1, MaxStringLen: 0, MaxArrayValues: 0, MaxStructFields: -1, EvalTimeout: 0, MaxMapBuckets: 0})
 	if v.Unreadable != nil {
 		d.Unreadable = v.Unreadable
 		return

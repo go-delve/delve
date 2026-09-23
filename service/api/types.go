@@ -410,6 +410,9 @@ type LoadConfig struct {
 	MaxArrayValues int
 	// MaxStructFields is the maximum number of fields read from a struct, -1 will read all fields.
 	MaxStructFields int
+	// EvalTimeout is the maximum number of milliseconds before an expression
+	// evaluation is aborted. Does not apply to 'call'. Defaults to 100 milliseconds
+	EvalTimeout int
 }
 
 // Goroutine represents the information relevant to Delve from the runtime's

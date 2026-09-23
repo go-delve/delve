@@ -157,6 +157,9 @@ type LoadConfig struct {
 	MaxArrayValues int
 	// MaxStructFields is the maximum number of fields read from a struct, -1 will read all fields.
 	MaxStructFields int
+	// EvalTimeout is the maximum number of milliseconds before an expression
+	// evaluation is aborted. Does not apply to 'call'. Defaults to 100 milliseconds
+	EvalTimeout int
 
 	// MaxMapBuckets is the maximum number of map buckets to read before giving up.
 	// A value of 0 will read as many buckets as necessary until the entire map
@@ -188,8 +191,24 @@ type LoadConfig struct {
 	MaxMapBuckets int
 }
 
-var loadSingleValue = LoadConfig{false, 0, 64, 0, 0, 0}
-var loadFullValueLongerStrings = LoadConfig{true, 1, 1024 * 1024, 64, -1, 0}
+var loadSingleValue = LoadConfig{
+	FollowPointers:     false,
+	MaxVariableRecurse: 0,
+	MaxStringLen:       64,
+	MaxArrayValues:     0,
+	MaxStructFields:    0,
+	EvalTimeout:        0,
+	MaxMapBuckets:      0,
+}
+var loadFullValueLongerStrings = LoadConfig{
+	FollowPointers:     true,
+	MaxVariableRecurse: 1,
+	MaxStringLen:       1024 * 1024,
+	MaxArrayValues:     64,
+	MaxStructFields:    -1,
+	EvalTimeout:        0,
+	MaxMapBuckets:      0,
+}
 
 // LoadFullValue returns a LoadConfig that follows pointers and loads a
 // moderate amount of nested data (the default used throughout Delve).
@@ -2012,6 +2031,13 @@ func (v *Variable) funcvalAddr() uint64 {
 }
 
 func (v *Variable) loadMap(recurseLevel int, cfg LoadConfig) {
+	tstart := time.Now()
+	timeout := cfg.EvalTimeout
+	if timeout <= 0 {
+		timeout = defaultEvalTimeoutMilliseconds
+	}
+	timedOut := func() bool { return time.Since(tstart) > time.Duration(timeout)*time.Millisecond }
+
 	it := v.mapIterator(uint64(cfg.MaxMapBuckets))
 	if it == nil {
 		return
@@ -2022,15 +2048,19 @@ func (v *Variable) loadMap(recurseLevel int, cfg LoadConfig) {
 	}
 
 	for skip := 0; skip < v.mapSkip; skip++ {
-		if ok := it.next(); !ok {
-			v.Unreadable = errors.New("map index out of bounds")
+		if ok := it.next(timedOut); !ok {
+			if timedOut() {
+				v.Unreadable = errEvalTimedOut
+			} else {
+				v.Unreadable = errors.New("map index out of bounds")
+			}
 			return
 		}
 	}
 
 	count := 0
 	errcount := 0
-	for it.next() {
+	for it.next(timedOut) {
 		key := it.key()
 		val := it.value()
 		key.loadValueInternal(recurseLevel+1, cfg)
@@ -2046,6 +2076,9 @@ func (v *Variable) loadMap(recurseLevel int, cfg LoadConfig) {
 		if count >= cfg.MaxArrayValues || int64(count) >= v.Len {
 			break
 		}
+	}
+	if timedOut() {
+		v.Unreadable = errEvalTimedOut
 	}
 }
 

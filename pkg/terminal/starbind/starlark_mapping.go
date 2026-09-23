@@ -1631,6 +1631,12 @@ func (env *Env) starlarkPredeclare() (starlark.StringDict, map[string]string) {
 				return starlark.None, decorateError(thread, err)
 			}
 		}
+		if len(args) > 3 && args[3] != starlark.None {
+			err := unmarshalStarlarkValue(args[3], &rpcArgs.Timeout, "Timeout")
+			if err != nil {
+				return starlark.None, decorateError(thread, err)
+			}
+		}
 		for _, kv := range kwargs {
 			var err error
 			switch kv[0].(starlark.String) {
@@ -1640,6 +1646,8 @@ func (env *Env) starlarkPredeclare() (starlark.StringDict, map[string]string) {
 				err = unmarshalStarlarkValue(kv[1], &rpcArgs.Symbol, "Symbol")
 			case "Value":
 				err = unmarshalStarlarkValue(kv[1], &rpcArgs.Value, "Value")
+			case "Timeout":
+				err = unmarshalStarlarkValue(kv[1], &rpcArgs.Timeout, "Timeout")
 			default:
 				err = fmt.Errorf("unknown argument %q", kv[0])
 			}
@@ -1653,7 +1661,7 @@ func (env *Env) starlarkPredeclare() (starlark.StringDict, map[string]string) {
 		}
 		return env.interfaceToStarlarkValue(&rpcRet), nil
 	})
-	doc["set_expr"] = "builtin set_expr(Scope, Symbol, Value)\n\nset_expr sets the value of a variable. Only numerical types and\npointers are currently supported."
+	doc["set_expr"] = "builtin set_expr(Scope, Symbol, Value, Timeout)\n\nset_expr sets the value of a variable. Only numerical types and\npointers are currently supported."
 	r["set_execution_point"] = starlark.NewBuiltin("set_execution_point", func(thread *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 		if err := isCancelled(thread); err != nil {
 			return starlark.None, decorateError(thread, err)

@@ -108,7 +108,7 @@ type Client interface {
 	TypeInfo(name string) (*api.TypeInfo, error)
 
 	// SetVariable sets the value of a variable
-	SetVariable(scope api.EvalScope, symbol, value string) error
+	SetVariable(scope api.EvalScope, symbol, value string, timeout int) error
 
 	// ListSources lists all source files in the process matching filter.
 	ListSources(filter string) ([]string, error)

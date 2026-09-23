@@ -359,6 +359,7 @@ func LoadConfigToProc(cfg *LoadConfig) *proc.LoadConfig {
 		MaxStringLen:       cfg.MaxStringLen,
 		MaxArrayValues:     cfg.MaxArrayValues,
 		MaxStructFields:    cfg.MaxStructFields,
+		EvalTimeout:        cfg.EvalTimeout,
 		MaxMapBuckets:      0, // MaxMapBuckets is set internally by pkg/proc, read its documentation for an explanation.
 	}
 }
@@ -374,6 +375,7 @@ func LoadConfigFromProc(cfg *proc.LoadConfig) *LoadConfig {
 		MaxStringLen:       cfg.MaxStringLen,
 		MaxArrayValues:     cfg.MaxArrayValues,
 		MaxStructFields:    cfg.MaxStructFields,
+		EvalTimeout:        cfg.EvalTimeout,
 	}
 }
 

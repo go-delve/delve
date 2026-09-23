@@ -51,6 +51,9 @@ type Config struct {
 	// MaxVariableRecurse is output evaluation depth of nested struct members, array and
 	// slice items and dereference pointers
 	MaxVariableRecurse *int `yaml:"max-variable-recurse,omitempty"`
+	// EvalTimeout is the number of milliseconds before an expression
+	// evaluation is aborted.
+	EvalTimeout *int `yaml:"eval-timeout,omitempty"`
 	// DisassembleFlavor allow user to specify output syntax flavor of assembly, one of
 	// this list "intel"(default), "gnu", "go"
 	DisassembleFlavor *string `yaml:"disassemble-flavor,omitempty"`
@@ -151,7 +154,8 @@ See also Documentation/cli/substitutepath.md for how the rules are applied.
 	"max-string-len":            "Maximum string length used when printing variables.\n",
 	"max-array-values":          "Maximum number of array values when printing variables.\n",
 	"max-variable-recurse":      "Maximum number of nested struct members when printing variables.\n",
-	"show-raw-strings":         "If true, print string values as-is with %s (no quoting or escaping) rather than with Go's %q.\n",
+	"eval-timeout":              "Maximum time that an expression evaluation can take, in milliseconds. Defaults to 100ms.\n",
+	"show-raw-strings":          "If true, print string values as-is with %s (no quoting or escaping) rather than with Go's %q.\n",
 	"disassemble-flavor":        "Disassembler syntax. Can be 'intel', 'gun' or 'go'.\n",
 	"show-location-expr":        "If true the 'whatis' command will print the DWARF location expression of its argument.\n",
 	"source-list-line-color":    "Source list line-number color, as a terminal escape sequence.\n",

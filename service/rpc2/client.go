@@ -382,9 +382,9 @@ func (c *RPCClient) EvalVariable(scope api.EvalScope, expr string, cfg api.LoadC
 	return out.Variable, err
 }
 
-func (c *RPCClient) SetVariable(scope api.EvalScope, symbol, value string) error {
+func (c *RPCClient) SetVariable(scope api.EvalScope, symbol, value string, timeout int) error {
 	out := new(SetOut)
-	return c.call("Set", SetIn{scope, symbol, value}, out)
+	return c.call("Set", SetIn{scope, symbol, value, timeout}, out)
 }
 
 func (c *RPCClient) ListSources(filter string) ([]string, error) {

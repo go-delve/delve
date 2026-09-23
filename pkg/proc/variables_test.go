@@ -100,7 +100,7 @@ func setVariable(p *proc.Target, symbol, value string) error {
 	if err != nil {
 		return err
 	}
-	return scope.SetVariable(symbol, value)
+	return scope.SetVariable(symbol, value, 0)
 }
 
 func multiLineVar(v *proc.Variable) string {

@@ -292,6 +292,9 @@ type launchAttachArgs struct {
 	MaxStringLen int `cfgName:"maxStringLen"`
 	// MaxArrayValues is the maximum number of array, slice and map elements loaded.
 	MaxArrayValues int `cfgName:"maxArrayValues"`
+	// EvalTimeout is the expression evaluation timeout in milliseconds.
+	// Defaults to 100 milliseconds.
+	EvalTimeout int `cfgName:"evalTimeout"`
 	// ShowGlobalVariables indicates if global package variables should be loaded.
 	ShowGlobalVariables bool `cfgName:"showGlobalVariables"`
 	// ShowRegisters indicates if register values should be loaded.
@@ -382,7 +385,12 @@ func (s *Session) loadConfig() proc.LoadConfig {
 	if n := s.args.MaxArrayValues; n > 0 {
 		cfg.MaxArrayValues = n
 	}
+	cfg.EvalTimeout = s.args.EvalTimeout
 	return cfg
+}
+
+func (s *Session) evalTimeout() int {
+	return s.args.EvalTimeout
 }
 
 const (
@@ -3664,7 +3672,7 @@ func (s *Session) onSetVariableRequest(request *dap.SetVariableRequest) {
 			return
 		}
 	} else {
-		if err := s.debugger.SetVariableInScope(int64(goid), frame, 0, evaluateName, arg.Value); err != nil {
+		if err := s.debugger.SetVariableInScope(int64(goid), frame, 0, evaluateName, arg.Value, s.evalTimeout()); err != nil {
 			s.sendErrorResponse(request.Request, UnableToSetVariable, "Unable to set variable", err.Error())
 			return
 		}
