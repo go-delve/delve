@@ -414,11 +414,52 @@ func FirstPCAfterPrologue(p Process, fn *Function, sameline bool) (uint64, error
 		// breakpoint with file:line and with the function name always result on
 		// the same instruction being selected.
 		if pc2, _, _, ok := fn.cu.lineInfo.FirstStmt(fn.Entry, fn.End); ok {
+			if p.BinInfo().Arch.Name == "ppc64le" {
+				pc2 = p.BinInfo().ppc64leSkipToLocalEntry(fn, pc2)
+			}
 			return pc2, nil
 		}
 	}
 
 	return pc, nil
+}
+
+// ppc64leSkipToLocalEntry returns the ppc64le ELFv2 local entry point of fn, clamping pc
+// forward to it when pc falls inside the function's global-entry stub.
+//
+// On ppc64le DWARF low_pc (fn.Entry) is the global entry point, which begins
+// with a TOC (r2) setup stub. However, Callers in the same module (for example
+// the cgo trampoline calling a C function) already share the TOC and enter at
+// the local entry point. A breakpoint placed at global entry point never executes.
+// gcc does not emit DW_LNS_set_prologue_end, so PrologueEndPC cannot advance past
+// the stub on its own; use the local entry offset recorded in the ELF symbol
+// instead.
+//
+// The offset is encoded in bits 5-7 of the symbol's st_other byte; see the
+// Power Architecture 64-Bit ELF V2 ABI Specification, section 3.4.1 "Symbol
+// Values" (https://openpowerfoundation.org/specifications/64bitelfabi/). The
+// decoding below matches binutils' PPC64_LOCAL_ENTRY_OFFSET macro in
+// include/elf/ppc64.h.
+
+// On other architectures, for functions without a local entry offset, or when
+// pc is already past the local entry point, this becomes a no-op.
+func (bi *BinaryInfo) ppc64leSkipToLocalEntry(fn *Function, pc uint64) uint64 {
+	if bi.Arch.Name != "ppc64le" {
+		return pc
+	}
+	// obtain symbol info using global entry point to compute local entry point
+	sym := bi.SymNames[fn.Entry]
+	if sym == nil {
+		return pc
+	}
+	// compute local entry point
+	// bits 5-7 of st_other encode the offset as ((1<<k)>>2)<<2 bytes (0,0,4,8,16,32,64).
+	bits := (sym.Other >> 5) & 0x7
+	localEntry := fn.Entry + uint64(((1<<bits)>>2)<<2)
+	if pc < localEntry {
+		return localEntry
+	}
+	return pc
 }
 
 func findRetPC(t *Target, name string) ([]uint64, error) {
@@ -1876,7 +1917,8 @@ func (bi *BinaryInfo) loadSymbolName(image *Image, file *elf.File, wg *sync.Wait
 	}
 	symSecs, _ := file.Symbols()
 	for _, symSec := range symSecs {
-		if symSec.Info == _STT_FUNC { // TODO(chainhelen), need to parse others types.
+		// match the st_info type bits so global and weak functions are included, not just local ones
+		if elf.ST_TYPE(symSec.Info) == _STT_FUNC { // TODO(chainhelen), need to parse others types.
 			s := symSec
 			bi.SymNames[symSec.Value+image.StaticBase] = &s
 		}
