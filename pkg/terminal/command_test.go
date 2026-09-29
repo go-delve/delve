@@ -2042,3 +2042,25 @@ func TestPrintShowRawStrings(t *testing.T) {
 		}
 	})
 }
+
+func TestDeleteAlias(t *testing.T) {
+	var buf bytes.Buffer
+	var term Term
+	term.conf = &config.Config{
+		Aliases: map[string][]string{
+			"print": []string{"b", "c", "a", "a"},
+		},
+	}
+	term.cmds = DebugCommands(nil)
+	term.stdout = &transcriptWriter{pw: &pagingWriter{w: &buf}}
+	configureCmd(&term, callContext{}, "alias a")
+	t.Logf("new aliases: %q", term.conf.Aliases)
+	if pa := term.conf.Aliases["print"]; len(pa) != 2 || pa[0] != "b" || pa[1] != "c" {
+		t.Fatal("wrong alias list")
+	}
+	err := configureCmd(&term, callContext{}, "alias print b")
+	t.Logf("alias command error: %v", err)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+}
