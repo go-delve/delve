@@ -713,16 +713,20 @@ func (c *Commands) Find(cmdstr string, prefix cmdPrefix) command {
 		return command{aliases: []string{"nullcmd"}, cmdFn: nullCommand}
 	}
 
+	cmd, _ := c.findInternal(cmdstr, prefix)
+	return cmd
+}
+
+func (c *Commands) findInternal(cmdstr string, prefix cmdPrefix) (command, bool) {
 	for _, v := range c.cmds {
 		if v.match(cmdstr) {
 			if prefix != noPrefix && v.allowedPrefixes&prefix == 0 {
 				continue
 			}
-			return v
+			return v, true
 		}
 	}
-
-	return command{aliases: []string{"nocmd"}, cmdFn: noCmdAvailable}
+	return command{aliases: []string{"nocmd"}, cmdFn: noCmdAvailable}, false
 }
 
 // CallWithContext takes a command and a context that command should be executed in.

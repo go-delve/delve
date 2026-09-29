@@ -129,15 +129,18 @@ func configureSetAlias(t *Term, rest string) error {
 	case 1: // delete alias rule
 		for k := range t.conf.Aliases {
 			v := t.conf.Aliases[k]
-			for i := range v {
-				if v[i] == argv[0] {
-					copy(v[i:], v[i+1:])
-					t.conf.Aliases[k] = v[:len(v)-1]
+			t.conf.Aliases[k] = t.conf.Aliases[k][:0]
+			for _, alias := range v {
+				if alias != argv[0] {
+					t.conf.Aliases[k] = append(t.conf.Aliases[k], alias)
 				}
 			}
 		}
 	case 2: // add alias rule
 		alias, cmd := argv[1], argv[0]
+		if _, found := t.cmds.findInternal(alias, noPrefix); found {
+			return fmt.Errorf("command %s already exists", alias)
+		}
 		if t.conf.Aliases == nil {
 			t.conf.Aliases = make(map[string][]string)
 		}
