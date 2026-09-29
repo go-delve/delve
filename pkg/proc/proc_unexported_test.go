@@ -5,29 +5,41 @@ import (
 	"testing"
 )
 
-func TestTrampolineTarget_AddressAttributeAdjustsStaticBase(t *testing.T) {
-	entry := &dwarf.Entry{Field: []dwarf.Field{{
-		Attr:  dwarf.AttrTrampoline,
-		Val:   uint64(0x1000),
-		Class: dwarf.ClassAddress,
-	}}}
-
-	trampoline, target := trampolineTarget(entry, 0x2000)
-	if !trampoline || target != 0x3000 {
-		t.Fatalf("trampolineTarget() = (%t, %#x), want (true, %#x)", trampoline, target, uint64(0x3000))
+func TestTrampolineTarget(t *testing.T) {
+	tests := []struct {
+		name       string
+		value      any
+		class      dwarf.Class
+		staticBase uint64
+		wantTarget uint64
+	}{
+		{
+			name:       "address attribute adjusts static base",
+			value:      uint64(0x1000),
+			class:      dwarf.ClassAddress,
+			staticBase: 0x2000,
+			wantTarget: 0x3000,
+		},
+		{
+			name:  "boolean attribute has no target",
+			value: true,
+			class: dwarf.ClassFlag,
+		},
 	}
-}
 
-func TestTrampolineTarget_BooleanAttributeHasNoTarget(t *testing.T) {
-	entry := &dwarf.Entry{Field: []dwarf.Field{{
-		Attr:  dwarf.AttrTrampoline,
-		Val:   true,
-		Class: dwarf.ClassFlag,
-	}}}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			entry := &dwarf.Entry{Field: []dwarf.Field{{
+				Attr:  dwarf.AttrTrampoline,
+				Val:   test.value,
+				Class: test.class,
+			}}}
 
-	trampoline, target := trampolineTarget(entry, 0x2000)
-	if !trampoline || target != 0 {
-		t.Fatalf("trampolineTarget() = (%t, %#x), want (true, 0)", trampoline, target)
+			trampoline, target := trampolineTarget(entry, test.staticBase)
+			if !trampoline || target != test.wantTarget {
+				t.Fatalf("trampolineTarget() = (%t, %#x), want (true, %#x)", trampoline, target, test.wantTarget)
+			}
+		})
 	}
 }
 
