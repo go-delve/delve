@@ -533,7 +533,8 @@ type Function struct {
 	offset     dwarf.Offset
 	cu         *compileUnit
 
-	Trampoline bool // DW_AT_trampoline attribute set to true
+	Trampoline       bool   // DW_AT_trampoline attribute is present
+	TrampolineTarget uint64 // Address-valued DW_AT_trampoline, if available
 
 	// InlinedCalls lists all inlined calls to this function
 	InlinedCalls         []InlinedCall
@@ -3075,7 +3076,7 @@ func (bi *BinaryInfo) addConcreteSubprogram(entry *dwarf.Entry, ctxt *loadDebugI
 		bi.logger.Warnf("reading debug_info: concrete subprogram without name at %#x", entry.Offset)
 	}
 
-	trampoline, _ := entry.Val(dwarf.AttrTrampoline).(bool)
+	trampoline, trampolineTarget := trampolineTarget(entry, cu.image.StaticBase)
 
 	originIdx := ctxt.lookupAbstractOrigin(bi, entry.Offset)
 	fn := &bi.Functions[originIdx]
@@ -3086,6 +3087,7 @@ func (bi *BinaryInfo) addConcreteSubprogram(entry *dwarf.Entry, ctxt *loadDebugI
 	fn.offset = entry.Offset
 	fn.cu = cu
 	fn.Trampoline = trampoline
+	fn.TrampolineTarget = trampolineTarget
 
 	if entry.Children {
 		bi.loadDebugInfoMapsInlinedCalls(ctxt, reader, cu)
@@ -3111,6 +3113,20 @@ func subprogramEntryRange(entry *dwarf.Entry, image *Image) (lowpc, highpc uint6
 		highpc = ranges[0][1] + image.StaticBase
 	}
 	return lowpc, highpc, ok
+}
+
+// trampolineTarget returns whether entry identifies a trampoline and, for
+// linker-generated direct trampolines, the static destination recorded in
+// DW_AT_trampoline. Older compilers use the attribute as a boolean flag.
+func trampolineTarget(entry *dwarf.Entry, staticBase uint64) (trampoline bool, target uint64) {
+	switch value := entry.Val(dwarf.AttrTrampoline).(type) {
+	case bool:
+		return value, 0
+	case uint64:
+		return true, value + staticBase
+	default:
+		return false, 0
+	}
 }
 
 func (bi *BinaryInfo) loadDebugInfoMapsInlinedCalls(ctxt *loadDebugInfoMapsContext, reader *reader.Reader, cu *compileUnit) {
