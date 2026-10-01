@@ -1832,6 +1832,12 @@ func TestClientServer_FpRegisters(t *testing.T) {
 		{"XMM12", "…[YMM12h] 0x3ff66666666666663ff4cccccccccccd"},
 		{"XMM12", "…[ZMM12hl] 0x3ff66666666666663ff4cccccccccccd"},
 		{"XMM12", "…[ZMM12hh] 0x3ff66666666666663ff4cccccccccccd"},
+
+		// AVX-512 Hi16_ZMM
+		{"XMM20", "0x3ff66666666666663ff4cccccccccccd"},
+		{"XMM20", "…[YMM20h] 0x3ff66666666666663ff4cccccccccccd"},
+		{"XMM20", "…[ZMM20hl] 0x3ff66666666666663ff4cccccccccccd"},
+		{"XMM20", "…[ZMM20hh] 0x3ff66666666666663ff4cccccccccccd"},
 	}
 	protest.AllowRecording(t)
 	withTestClient2Extended("fputest/", t, 0, [3]string{}, nil, func(c service.Client, fixture protest.Fixture) {
@@ -1871,7 +1877,7 @@ func TestClientServer_FpRegisters(t *testing.T) {
 			if regtest.name == "XMM11" && !avx2 {
 				continue
 			}
-			if regtest.name == "XMM12" && (!avx512 || testBackend == "rr") {
+			if (regtest.name == "XMM12" || regtest.name == "XMM20") && (!avx512 || testBackend == "rr") {
 				continue
 			}
 			found := false
