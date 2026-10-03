@@ -1,7 +1,10 @@
 package proc
 
 import (
+	"errors"
 	"testing"
+
+	"github.com/go-delve/delve/pkg/proc/evalop"
 )
 
 func TestAlignAddr(t *testing.T) {
@@ -95,4 +98,54 @@ func TestConvertInt(t *testing.T) {
 			t.Errorf("expected=%#016x got=%#016x\n", tc.tgt, out)
 		}
 	}
+}
+
+// TestEvalCallInjectionSetTarget_EmptyFncalls_ReturnsError verifies that
+// CallInjectionSetTarget does not panic when the fncalls stack is empty
+// (telemetry issues #4085, #4363).
+func TestEvalCallInjectionSetTarget_EmptyFncalls_ReturnsError(t *testing.T) {
+	scope := &EvalScope{}
+	stack := &evalStack{}
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("evalCallInjectionSetTarget panicked: %v", r)
+		}
+	}()
+	scope.evalCallInjectionSetTarget(&evalop.CallInjectionSetTarget{}, stack, nil)
+	if stack.err == nil {
+		t.Fatal("expected error when CallInjectionSetTarget runs with no active call injection")
+	}
+}
+
+func TestCheckCallInjectionReadyToFinish(t *testing.T) {
+	t.Run("errorsWhenTargetNeverSet", func(t *testing.T) {
+		fncall := &functionCallState{}
+		checkCallInjectionReadyToFinish(fncall)
+		if fncall.err == nil {
+			t.Fatal("expected error when finishing a call that never ran SetTarget")
+		}
+	})
+	t.Run("preservesPrecheckError", func(t *testing.T) {
+		precheckErr := errors.New("call not allowed at this point")
+		fncall := &functionCallState{err: precheckErr}
+		checkCallInjectionReadyToFinish(fncall)
+		if !errors.Is(fncall.err, precheckErr) {
+			t.Fatalf("expected precheck error to be preserved, got %v", fncall.err)
+		}
+	})
+	t.Run("okWhenTargetWasSet", func(t *testing.T) {
+		fncall := &functionCallState{targetSet: true}
+		checkCallInjectionReadyToFinish(fncall)
+		if fncall.err != nil {
+			t.Fatalf("unexpected error when SetTarget had run: %v", fncall.err)
+		}
+	})
+	t.Run("okWhenTargetWasSetEvenIfUndoCleared", func(t *testing.T) {
+		// CallInjectionComplete clears undoInjection on success; targetSet must remain.
+		fncall := &functionCallState{targetSet: true, undoInjection: nil}
+		checkCallInjectionReadyToFinish(fncall)
+		if fncall.err != nil {
+			t.Fatalf("unexpected error after Complete cleared undoInjection: %v", fncall.err)
+		}
+	})
 }
