@@ -1730,12 +1730,20 @@ func TestStepIntoFunctionThroughARM64LinkerTrampoline(t *testing.T) {
 		assertNoError(err, t, "ThreadLocation() returned an error")
 		text, err := proc.Disassemble(p.Memory(), nil, p.Breakpoints(), p.BinInfo(), loc.PC, loc.PC+4)
 		assertNoError(err, t, "Disassemble() returned an error")
-		if len(text) != 1 || text[0].DestLoc == nil || text[0].DestLoc.Fn == nil ||
-			!strings.HasSuffix(text[0].DestLoc.Fn.Name, "+0-tramp0") {
+		if len(text) != 1 || text[0].DestLoc == nil || text[0].DestLoc.Fn == nil {
 			t.Fatalf("expected call destination to have a linker trampoline function, disassembled %#v", text)
 		}
-		if !text[0].DestLoc.Fn.Trampoline {
-			t.Fatal("expected pclntab linker trampoline to be marked as a trampoline")
+		if goversion.VersionAfterOrEqual(runtime.Version(), 1, 28) {
+			if !text[0].DestLoc.Fn.Trampoline || text[0].DestLoc.Fn.TrampolineTarget == 0 {
+				t.Fatal("expected DW_AT_trampoline to identify the direct trampoline target")
+			}
+		} else {
+			if !strings.HasSuffix(text[0].DestLoc.Fn.Name, "+0-tramp0") {
+				t.Fatalf("expected pclntab linker trampoline, got %q", text[0].DestLoc.Fn.Name)
+			}
+			if !text[0].DestLoc.Fn.Trampoline {
+				t.Fatal("expected pclntab linker trampoline to be marked as a trampoline")
+			}
 		}
 
 		assertNoError(grp.Step(), t, "Step() returned an error")
