@@ -96,7 +96,10 @@ func ppc64leFixFrameUnwindContext(fctxt *frame.FrameContext, pc uint64, bi *Bina
 }
 
 const ppc64cgocallSPOffsetSaveSlot = 32
-const ppc64prevG0schedSPOffsetSaveSlot = 40
+
+// runtime.cgocallback saves the previous g0.sched.sp at savedsp-24(SP)
+// in its 24+FIXED_FRAME (56-byte) frame: 24 + 32 - 24 = 32(R1)
+const ppc64prevG0schedSPOffsetSaveSlot = 32
 
 func ppc64leSwitchStack(it *stackIterator, callFrameRegs *op.DwarfRegisters) bool {
 	if it.frame.Current.Fn == nil && it.systemstack && it.g != nil && it.top {
@@ -137,12 +140,9 @@ func ppc64leSwitchStack(it *stackIterator, callFrameRegs *op.DwarfRegisters) boo
 			// LR is saved into the caller's frame at 16(SP) before the stack
 			// allocation (host ELFv2 ABI).
 			newlr, _ := readUintRaw(it.mem, newsp+16, int64(it.bi.Arch.PtrSize()))
-			if it.regs.Reg(it.regs.BPRegNum) != nil {
-				it.regs.Reg(it.regs.BPRegNum).Uint64Val = newbp
-			} else {
-				reg, _ := it.readRegisterAt(it.regs.BPRegNum, it.regs.SP()+bpoff)
-				it.regs.AddReg(it.regs.BPRegNum, reg)
-			}
+			// Restore saved R31 for C callers whose unwind rules use it.
+			// BPRegNum identifies R1/SP in this register set, not R31.
+			it.regs.AddReg(regnum.PPC64LE_R0+31, op.DwarfRegisterFromUint64(newbp))
 			it.regs.Reg(it.regs.LRRegNum).Uint64Val = newlr
 			it.regs.Reg(it.regs.SPRegNum).Uint64Val = newsp
 			it.pc = newlr
@@ -217,9 +217,7 @@ func ppc64leSwitchStack(it *stackIterator, callFrameRegs *op.DwarfRegisters) boo
 		}
 		// entering the system stack
 		callFrameRegs.Reg(callFrameRegs.SPRegNum).Uint64Val = it.g0_sched_sp
-		// reads the previous value of g0.sched.sp that runtime.cgocallback_gofunc saved on the stack
-
-		// TODO: is this save slot correct?
+		// reads the previous value of g0.sched.sp by runtime.cgocallback
 		it.g0_sched_sp, _ = readUintRaw(it.mem, callFrameRegs.SP()+ppc64prevG0schedSPOffsetSaveSlot, int64(it.bi.Arch.PtrSize()))
 		it.systemstack = true
 		return false
