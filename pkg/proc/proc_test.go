@@ -1,6 +1,7 @@
 package proc_test
 
 import (
+	"bufio"
 	"bytes"
 	"debug/buildinfo"
 	"encoding/binary"
@@ -6283,6 +6284,162 @@ func TestNonGoBinaryWithGoDlopen(t *testing.T) {
 		if !errors.As(err, &pe) {
 			t.Fatalf("second Continue failed: %v", err)
 		}
+	}
+}
+
+func TestNonGoBinaryWithGoDlopenGoroutines(t *testing.T) {
+	// When the Go runtime lives in a shared library (buildmode=c-shared)
+	// loaded by a non-Go process, goroutines must be listed from the runtime
+	// of that library.
+	if runtime.GOOS != "linux" {
+		t.Skip("only supported on linux")
+	}
+	// The G pointer of a Go shared library is in its own TLS block, which is
+	// only supported on amd64 and on architectures that keep it in a register.
+	skipOn(t, "G pointer of Go shared libraries not supported", "linux", "386")
+	if testBackend != "native" {
+		t.Skip("only supported with native backend")
+	}
+	if ccPath, _ := exec.LookPath("cc"); ccPath == "" {
+		t.Skip("no C compiler in path")
+	}
+	protest.MustHaveCgo(t)
+
+	fixturesDir := protest.FindFixturesDir()
+	tmpdir := t.TempDir()
+	goSoPath := filepath.Join(tmpdir, "golib.so")
+
+	cmd := exec.Command("go", "build", "-gcflags=all=-N -l", "-buildmode=c-shared", "-o", goSoPath, ".")
+	cmd.Dir = filepath.Join(fixturesDir, "godlopen", "golib")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("failed to build Go shared object: %v\n%s", err, out)
+	}
+
+	cBinPath := filepath.Join(tmpdir, "godlopen")
+	cSrcPath := filepath.Join(fixturesDir, "godlopen", "main.c")
+	cmd = exec.Command("cc", "-g0", "-o", cBinPath, cSrcPath, "-ldl")
+	out, err = cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("failed to build C binary: %v\n%s", err, out)
+	}
+
+	grp, err := native.Launch([]string{cBinPath, goSoPath}, tmpdir, 0, []string{}, "", "", proc.OutputRedirect{}, proc.OutputRedirect{})
+	if err != nil {
+		t.Fatalf("Launch failed: %v", err)
+	}
+	defer grp.Detach(true)
+
+	p := grp.Selected
+
+	// Stop when the Go shared library is loaded, then stop in Go code.
+	assertNoError(grp.Continue(), t, "Continue to shared library load")
+	if p.StopReason != proc.StopSharedLibLoaded {
+		t.Fatalf("expected StopSharedLibLoaded stop reason, got %v", p.StopReason)
+	}
+	setFunctionBreakpoint(p, t, "main.GoFunction")
+	assertNoError(grp.Continue(), t, "Continue to main.GoFunction")
+
+	gs, _, err := proc.GoroutinesInfo(p, 0, 0)
+	assertNoError(err, t, "GoroutinesInfo")
+
+	found := false
+	for _, g := range gs {
+		if g.CurrentLoc.Fn != nil && g.CurrentLoc.Fn.Name == "main.GoFunction" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("could not find a goroutine stopped in main.GoFunction in %d goroutines", len(gs))
+	}
+
+	// The goroutine of the thread that hit the breakpoint must be the one
+	// stopped in main.GoFunction. This requires finding the G pointer in the
+	// TLS block of the shared library (on x86_64 it is not in the TLS block
+	// of the executable).
+	g, err := proc.GetG(p.CurrentThread())
+	assertNoError(err, t, "GetG")
+	if g == nil || g.CurrentLoc.Fn == nil || g.CurrentLoc.Fn.Name != "main.GoFunction" {
+		t.Errorf("expected the current goroutine to be stopped in main.GoFunction, got %v", g)
+	}
+}
+
+func TestNonGoBinaryWithGoDlopenAttach(t *testing.T) {
+	// When attaching to a non-Go process that has already loaded a Go shared
+	// library, loading another shared library must not stop the target, and
+	// breakpoints in the Go library must be hit.
+	if runtime.GOOS != "linux" {
+		t.Skip("only supported on linux")
+	}
+	if testBackend != "native" {
+		t.Skip("only supported with native backend")
+	}
+	if ccPath, _ := exec.LookPath("cc"); ccPath == "" {
+		t.Skip("no C compiler in path")
+	}
+	protest.MustHaveCgo(t)
+
+	fixturesDir := protest.FindFixturesDir()
+	tmpdir := t.TempDir()
+	goSoPath := filepath.Join(tmpdir, "golib.so")
+
+	cmd := exec.Command("go", "build", "-gcflags=all=-N -l", "-buildmode=c-shared", "-o", goSoPath, ".")
+	cmd.Dir = filepath.Join(fixturesDir, "godlopen", "golib")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("failed to build Go shared object: %v\n%s", err, out)
+	}
+
+	cBinPath := filepath.Join(tmpdir, "godlopenattach")
+	cSrcPath := filepath.Join(fixturesDir, "godlopenattach", "main.c")
+	cmd = exec.Command("cc", "-g0", "-o", cBinPath, cSrcPath, "-ldl")
+	out, err = cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("failed to build C binary: %v\n%s", err, out)
+	}
+
+	// libresolv is not loaded by the host nor by the Go runtime.
+	cmd = exec.Command(cBinPath, goSoPath, "libresolv.so.2")
+	stdin, err := cmd.StdinPipe()
+	assertNoError(err, t, "StdinPipe")
+	stdout, err := cmd.StdoutPipe()
+	assertNoError(err, t, "StdoutPipe")
+	cmd.Stderr = os.Stderr
+	assertNoError(cmd.Start(), t, "starting fixture")
+	defer func() {
+		cmd.Process.Kill()
+		cmd.Wait()
+	}()
+
+	// Wait for the Go shared library to be loaded.
+	scan := bufio.NewScanner(stdout)
+	if !scan.Scan() || scan.Text() != "ready" {
+		t.Fatalf("fixture did not start: %q %v", scan.Text(), scan.Err())
+	}
+
+	grp, err := native.Attach(cmd.Process.Pid, nil, []string{})
+	assertNoError(err, t, "Attach")
+	defer grp.Detach(false)
+
+	p := grp.Selected
+	if !p.BinInfo().HasGoImage() {
+		t.Fatal("expected HasGoImage to be true after attaching")
+	}
+	setFunctionBreakpoint(p, t, "main.GoFunction")
+
+	// Make the fixture load another shared library and call the Go library.
+	_, err = stdin.Write([]byte("go\n"))
+	assertNoError(err, t, "writing to fixture")
+
+	assertNoError(grp.Continue(), t, "Continue")
+	if p.StopReason == proc.StopSharedLibLoaded {
+		t.Fatal("target stopped when loading a shared library after attaching")
+	}
+	loc, err := proc.ThreadLocation(p.CurrentThread())
+	assertNoError(err, t, "ThreadLocation")
+	if loc.Fn == nil || loc.Fn.Name != "main.GoFunction" {
+		t.Fatalf("expected to stop in main.GoFunction, stopped at %v", loc)
 	}
 }
 

@@ -492,22 +492,33 @@ func (t *Target) sharedLibCallback(th Thread, tgt *Target) (bool, error) {
 	// Check if any newly loaded image is a Go binary.
 	// ElfUpdateSharedObjects has already run by this point (called in stop1
 	// before breakpoint callbacks), so new images are already in BinInfo.
-	if !tgt.BinInfo().HasGoImage() {
-		return false, nil
+	return tgt.InitGoImage(), nil
+}
+
+// InitGoImage sets up the Go-specific breakpoints of a non-Go executable
+// once a Go image (e.g. a Go shared library) is loaded. It must be called
+// by backends when attaching to a process that may have already loaded a
+// Go image, as no shared library load event will be received for it.
+// It returns true if the breakpoints were set up by this call.
+func (t *Target) InitGoImage() bool {
+	bi := t.BinInfo()
+	if len(bi.Images) == 0 || bi.Images[0].IsGo || !bi.HasGoImage() {
+		// Go executables set up the breakpoints when the target is created.
+		return false
 	}
 
 	didRun := false
-	tgt.onInitialGoImage.Do(func() {
+	t.onInitialGoImage.Do(func() {
 		didRun = true
 		logger := logflags.DebuggerLogger()
 		logger.Info("Go shared library detected, setting up Go-specific breakpoints")
 
-		tgt.createUnrecoveredPanicBreakpoint()
-		tgt.createFatalThrowBreakpoint()
-		tgt.createPluginOpenBreakpoint()
+		t.createUnrecoveredPanicBreakpoint()
+		t.createFatalThrowBreakpoint()
+		t.createPluginOpenBreakpoint()
 	})
 
-	return didRun, nil
+	return didRun
 }
 
 // CurrentThread returns the currently selected thread which will be used

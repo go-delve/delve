@@ -19,7 +19,8 @@ Tests skipped by each supported backend:
 	* 4 follow exec not implemented on freebsd
 	* 7 not implemented
 	* 2 not working on freebsd
-* linux/386 skipped = 2
+* linux/386 skipped = 3
+	* 1 G pointer of Go shared libraries not supported
 	* 2 not working on linux/386
 * linux/386/pie skipped = 1
 	* 1 broken

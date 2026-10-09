@@ -7,26 +7,44 @@ type goroutineCache struct {
 	allgentryAddr, allglenAddr uint64
 }
 
+// init looks up the addresses of runtime.allgs and runtime.allglen. The Go
+// runtime is usually in the executable, but it can also be in a shared
+// library (buildmode=c-shared) loaded by a non-Go program, so all images are
+// searched.
 func (gcache *goroutineCache) init(bi *BinaryInfo) {
-	var err error
+	for _, image := range bi.Images {
+		rdr := image.DwarfReader()
+		if rdr == nil {
+			continue
+		}
 
-	exeimage := bi.Images[0]
-	rdr := exeimage.DwarfReader()
-	if rdr == nil {
+		allglenAddr, err := rdr.AddrFor("runtime.allglen", image.StaticBase, bi.Arch.PtrSize())
+		if err != nil {
+			continue
+		}
+
+		rdr.Seek(0)
+		allgentryAddr, err := rdr.AddrFor("runtime.allgs", image.StaticBase, bi.Arch.PtrSize())
+		if err != nil {
+			// try old name (pre Go 1.6)
+			rdr.Seek(0)
+			allgentryAddr, err = rdr.AddrFor("runtime.allg", image.StaticBase, bi.Arch.PtrSize())
+			if err != nil {
+				continue
+			}
+		}
+
+		gcache.allglenAddr, gcache.allgentryAddr = allglenAddr, allgentryAddr
 		return
-	}
-
-	gcache.allglenAddr, _ = rdr.AddrFor("runtime.allglen", exeimage.StaticBase, bi.Arch.PtrSize())
-
-	rdr.Seek(0)
-	gcache.allgentryAddr, err = rdr.AddrFor("runtime.allgs", exeimage.StaticBase, bi.Arch.PtrSize())
-	if err != nil {
-		// try old name (pre Go 1.6)
-		gcache.allgentryAddr, _ = rdr.AddrFor("runtime.allg", exeimage.StaticBase, bi.Arch.PtrSize())
 	}
 }
 
 func (gcache *goroutineCache) getRuntimeAllg(bi *BinaryInfo, mem MemoryReadWriter) (uint64, uint64, error) {
+	if gcache.allglenAddr == 0 || gcache.allgentryAddr == 0 {
+		// The image containing the Go runtime may have been loaded after the
+		// cache was initialized (e.g. a Go shared library loaded with dlopen).
+		gcache.init(bi)
+	}
 	if gcache.allglenAddr == 0 || gcache.allgentryAddr == 0 {
 		return 0, 0, ErrNoRuntimeAllG
 	}
