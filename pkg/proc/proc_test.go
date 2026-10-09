@@ -6353,6 +6353,16 @@ func TestNonGoBinaryWithGoDlopenGoroutines(t *testing.T) {
 	if !found {
 		t.Errorf("could not find a goroutine stopped in main.GoFunction in %d goroutines", len(gs))
 	}
+
+	// The goroutine of the thread that hit the breakpoint must be the one
+	// stopped in main.GoFunction. This requires finding the G pointer in the
+	// TLS block of the shared library (on x86_64 it is not in the TLS block
+	// of the executable).
+	g, err := proc.GetG(p.CurrentThread())
+	assertNoError(err, t, "GetG")
+	if g == nil || g.CurrentLoc.Fn == nil || g.CurrentLoc.Fn.Name != "main.GoFunction" {
+		t.Errorf("expected the current goroutine to be stopped in main.GoFunction, got %v", g)
+	}
 }
 
 func TestNonGoBinaryWithGoDlopenAttach(t *testing.T) {
