@@ -176,6 +176,12 @@ func Attach(pid int, waitFor *proc.WaitFor, debugInfoDirs []string) (*proc.Targe
 		return nil, err
 	}
 	setupSharedLibBreakpoint(dbp, tgt)
+	if tgt.Selected != nil {
+		// A Go shared library may already be loaded: set up the Go-specific
+		// breakpoints now, so that loading other libraries does not stop
+		// the target.
+		tgt.Selected.InitGoImage()
+	}
 	return tgt, nil
 }
 
