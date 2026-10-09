@@ -102,6 +102,9 @@ const ppc64cgocallSPOffsetSaveSlot = 32
 const ppc64prevG0schedSPOffsetSaveSlot = 32
 
 func ppc64leSwitchStack(it *stackIterator, callFrameRegs *op.DwarfRegisters) bool {
+	if it.sigret {
+		it.frame.Ret = callFrameRegs.Uint64Val(callFrameRegs.LRRegNum)
+	}
 	if it.frame.Current.Fn == nil && it.systemstack && it.g != nil && it.top {
 		if err := it.switchToGoroutineStack(); err != nil {
 			it.err = err
@@ -111,8 +114,21 @@ func ppc64leSwitchStack(it *stackIterator, callFrameRegs *op.DwarfRegisters) boo
 	}
 	if it.frame.Current.Fn != nil {
 		switch it.frame.Current.Fn.Name {
-		case "runtime.asmcgocall", "runtime.cgocallback_gofunc", "runtime.sigpanic", "runtime.cgocallback":
+		case "runtime.asmcgocall", "runtime.cgocallback_gofunc", "runtime.cgocallback":
 			//do nothing
+		case "runtime.sigpanic":
+			// In runtime/signal_ppc64x.go, preparePanic subtracts MinFrameSize
+			// (32 bytes) from SP and stores the original LR at the new SP.
+			// sigpanic's CFA points to this saved LR slot. Restore LR from CFA
+			// and the faulting function's SP from CFA+32.
+			lr, err := it.readRegisterAt(regnum.PPC64LE_LR, uint64(it.regs.CFA))
+			if err != nil {
+				it.err = err
+				return false
+			}
+			callFrameRegs.AddReg(regnum.PPC64LE_SP, op.DwarfRegisterFromUint64(uint64(it.regs.CFA)+32))
+			callFrameRegs.AddReg(regnum.PPC64LE_LR, lr)
+			return false
 		case "runtime.goexit", "runtime.rt0_go":
 			// Look for "top of stack" functions.
 			it.atend = true
