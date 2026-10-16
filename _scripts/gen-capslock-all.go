@@ -118,13 +118,12 @@ func generateCapslock(platform Platform) error {
 	)
 
 	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("capslock failed: %w\n%s", err, output)
+	}
 
 	if writeErr := os.WriteFile(outputFile, output, 0644); writeErr != nil {
 		return fmt.Errorf("failed to write output file: %w", writeErr)
-	}
-
-	if err != nil {
-		return fmt.Errorf("capslock failed: %w", err)
 	}
 
 	return nil
