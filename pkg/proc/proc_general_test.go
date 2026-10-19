@@ -1,12 +1,15 @@
 package proc
 
 import (
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
 	"testing"
 	"unsafe"
 
+	"github.com/go-delve/delve/pkg/logflags"
 	protest "github.com/go-delve/delve/pkg/proc/test"
 )
 
@@ -315,4 +318,73 @@ func TestGenericFunctionNameWithoutParameters(t *testing.T) {
 			t.Errorf("For %q, name without parameters mismatch: %q %q", tc.name, tc.tgt, gn)
 		}
 	}
+}
+
+// warnLogger records the warnings logged.
+type warnLogger struct {
+	logflags.Logger
+	warnings []string
+}
+
+func (l *warnLogger) Warnf(format string, args ...any) {
+	l.warnings = append(l.warnings, fmt.Sprintf(format, args...))
+}
+
+func TestGoImageIndex(t *testing.T) {
+	newBinaryInfo := func(images ...*Image) (*BinaryInfo, *warnLogger) {
+		logger := &warnLogger{}
+		bi := &BinaryInfo{logger: logger}
+		for i, image := range images {
+			image.index = i
+			bi.Images = append(bi.Images, image)
+			bi.updateGoImageIndex(image)
+		}
+		return bi, logger
+	}
+	assertGoImage := func(t *testing.T, bi *BinaryInfo, want int) {
+		t.Helper()
+		if bi.goImageIndex != want {
+			t.Errorf("expected the Go image to be %d, got %d", want, bi.goImageIndex)
+		}
+	}
+	assertWarnings := func(t *testing.T, logger *warnLogger, want int) {
+		t.Helper()
+		if len(logger.warnings) != want {
+			t.Errorf("expected %d warnings, got %q", want, logger.warnings)
+		}
+	}
+
+	t.Run("Go executable", func(t *testing.T) {
+		bi, logger := newBinaryInfo(
+			&Image{Path: "exe", IsGo: true},
+			&Image{Path: "plugin.so", IsGo: true},
+			&Image{Path: "libgo.so", IsGo: true, cShared: true},
+		)
+		assertGoImage(t, bi, 0)
+		// The c-shared library has its own runtime, the plugin does not.
+		assertWarnings(t, logger, 1)
+	})
+
+	t.Run("Go shared library", func(t *testing.T) {
+		bi, logger := newBinaryInfo(
+			&Image{Path: "exe"},
+			&Image{Path: "libc.so"},
+			&Image{Path: "libgo1.so", IsGo: true, cShared: true},
+			&Image{Path: "libgo2.so", IsGo: true, cShared: true},
+		)
+		assertGoImage(t, bi, 2)
+		assertWarnings(t, logger, 1)
+	})
+
+	t.Run("load error", func(t *testing.T) {
+		failed := &Image{Path: "libgo1.so", IsGo: true, cShared: true, loadErr: errors.New("load error")}
+		bi, logger := newBinaryInfo(&Image{Path: "exe"}, failed)
+		assertGoImage(t, bi, 0)
+
+		// The image is loaded again successfully (LoadImageBinaryInfoAgain).
+		failed.loadErr = nil
+		bi.updateGoImageIndex(failed)
+		assertGoImage(t, bi, 1)
+		assertWarnings(t, logger, 0)
+	})
 }

@@ -12,7 +12,7 @@ func LoadModuleData(bi *BinaryInfo, mem MemoryReadWriter) ([]ModuleData, error) 
 	// +rtype -field moduledata.text uintptr
 	// +rtype -field moduledata.types uintptr
 
-	scope := globalScope(nil, bi, bi.Images[0], mem)
+	scope := globalScope(nil, bi, bi.goImage(), mem)
 	var md *Variable
 	md, err := scope.findGlobal("runtime", "firstmoduledata")
 	if err != nil {

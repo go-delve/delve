@@ -7,42 +7,40 @@ type goroutineCache struct {
 	allgentryAddr, allglenAddr uint64
 }
 
-// init looks up the addresses of runtime.allgs and runtime.allglen. The Go
-// runtime is usually in the executable, but it can also be in a shared
-// library (buildmode=c-shared) loaded by a non-Go program, so all images are
-// searched.
 func (gcache *goroutineCache) init(bi *BinaryInfo) {
-	for _, image := range bi.Images {
-		rdr := image.DwarfReader()
-		if rdr == nil {
-			continue
-		}
+	var err error
 
-		allglenAddr, err := rdr.AddrFor("runtime.allglen", image.StaticBase, bi.Arch.PtrSize())
-		if err != nil {
-			continue
-		}
-
-		rdr.Seek(0)
-		allgentryAddr, err := rdr.AddrFor("runtime.allgs", image.StaticBase, bi.Arch.PtrSize())
-		if err != nil {
-			// try old name (pre Go 1.6)
-			rdr.Seek(0)
-			allgentryAddr, err = rdr.AddrFor("runtime.allg", image.StaticBase, bi.Arch.PtrSize())
-			if err != nil {
-				continue
-			}
-		}
-
-		gcache.allglenAddr, gcache.allgentryAddr = allglenAddr, allgentryAddr
+	goimage := bi.goImage()
+	rdr := goimage.DwarfReader()
+	if rdr == nil {
 		return
+	}
+
+	// AddrFor returns 0 when the variable can't be found, which
+	// getRuntimeAllg treats as "no goroutine list" (ErrNoRuntimeAllG): a
+	// global variable can't be at address 0. The errors are only logged, as
+	// they all have the same outcome.
+	gcache.allglenAddr, err = rdr.AddrFor("runtime.allglen", goimage.StaticBase, bi.Arch.PtrSize())
+	if err != nil {
+		bi.logger.Debugf("could not find runtime.allglen in %s: %v", goimage.Path, err)
+	}
+
+	rdr.Seek(0)
+	gcache.allgentryAddr, err = rdr.AddrFor("runtime.allgs", goimage.StaticBase, bi.Arch.PtrSize())
+	if err != nil {
+		// try old name (pre Go 1.6)
+		rdr.Seek(0)
+		gcache.allgentryAddr, err = rdr.AddrFor("runtime.allg", goimage.StaticBase, bi.Arch.PtrSize())
+		if err != nil {
+			bi.logger.Debugf("could not find runtime.allgs in %s: %v", goimage.Path, err)
+		}
 	}
 }
 
 func (gcache *goroutineCache) getRuntimeAllg(bi *BinaryInfo, mem MemoryReadWriter) (uint64, uint64, error) {
-	if gcache.allglenAddr == 0 || gcache.allgentryAddr == 0 {
-		// The image containing the Go runtime may have been loaded after the
-		// cache was initialized (e.g. a Go shared library loaded with dlopen).
+	if (gcache.allglenAddr == 0 || gcache.allgentryAddr == 0) && bi.goImage().IsGo {
+		// The Go runtime is in a shared library loaded after the cache was
+		// initialized (e.g. a Go library loaded with dlopen by a non-Go program).
 		gcache.init(bi)
 	}
 	if gcache.allglenAddr == 0 || gcache.allgentryAddr == 0 {

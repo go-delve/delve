@@ -103,6 +103,13 @@ type BinaryInfo struct {
 	gStructOffset      uint64
 	gStructOffsetIsPtr bool
 
+	// goImageIndex is the index of the image containing the Go runtime: the
+	// executable for Go programs, otherwise the first Go image loaded (e.g. a
+	// Go shared library built with buildmode=c-shared and loaded by a non-Go
+	// program). Processes with more than one Go runtime are not supported:
+	// only the first one is used.
+	goImageIndex int
+
 	// consts[off] lists all the constants with the type defined at offset off.
 	consts constantsMap
 
@@ -970,6 +977,12 @@ func loadBinaryInfo(bi *BinaryInfo, image *Image, path string, entryPoint uint64
 // GStructOffset returns the offset of the G
 // struct in thread local storage.
 func (bi *BinaryInfo) GStructOffset(mem MemoryReadWriter) (uint64, error) {
+	if goimage := bi.goImage(); goimage.tlsgGOTEntry != 0 {
+		// The Go runtime is in a shared library loaded by a non-Go executable
+		// (tlsgGOTEntry is only set for those): the offset of the G pointer is
+		// stored in its GOT entry, filled by the dynamic linker.
+		return readUintRaw(mem, goimage.tlsgGOTEntry, int64(bi.Arch.PtrSize()))
+	}
 	offset := bi.gStructOffset
 	if bi.gStructOffsetIsPtr {
 		// The G struct offset from the TLS section is a pointer
@@ -1106,6 +1119,12 @@ type Image struct {
 
 	symTable *gosym.Table
 	Trimpath bool // trimpath used
+	cShared  bool // built with buildmode=c-shared
+
+	// tlsgGOTEntry is the address of the GOT entry holding the offset of the
+	// G pointer (runtime.tlsg) from the thread pointer, for Go shared
+	// libraries on linux/amd64. Zero if not found.
+	tlsgGOTEntry uint64
 
 	// IsGo is true when the image has been confirmed to be a Go binary,
 	// e.g. by checking for a Go producer string in DWARF compile units.
@@ -1151,6 +1170,28 @@ func (bi *BinaryInfo) HasGoImage() bool {
 	return false
 }
 
+// goImage returns the image containing the Go runtime. If no Go image has
+// been loaded yet, it returns the executable.
+func (bi *BinaryInfo) goImage() *Image {
+	return bi.Images[bi.goImageIndex]
+}
+
+// updateGoImageIndex records image as the image containing the Go runtime
+// if it is the first Go image loaded.
+func (bi *BinaryInfo) updateGoImageIndex(image *Image) {
+	if !image.IsGo || image.loadErr != nil || image.index == bi.goImageIndex {
+		return
+	}
+	goimage := bi.goImage()
+	if !goimage.IsGo || goimage.loadErr != nil {
+		bi.goImageIndex = image.index
+		return
+	}
+	if image.cShared {
+		bi.logger.Warnf("multiple Go runtimes found: only the goroutines of %s will be shown, not the ones of %s", goimage.Path, image.Path)
+	}
+}
+
 // AddImage adds the specified image to bi, loading data asynchronously.
 // Addr is the relocated entry point for the executable and staticBase (i.e.
 // the relocation offset) for all other images.
@@ -1187,16 +1228,19 @@ func (bi *BinaryInfo) AddImage(path string, addr uint64) error {
 	}
 	bi.macOSDebugFrameBugWorkaround()
 
-	// Detect trimpath
+	// Detect trimpath and buildmode=c-shared
 	binfo, _ := buildinfo.ReadFile(path)
 	if binfo != nil {
 		for _, s := range binfo.Settings {
-			if s.Key == "-trimpath" && s.Value == "true" {
+			switch {
+			case s.Key == "-trimpath" && s.Value == "true":
 				image.Trimpath = true
-				break
+			case s.Key == "-buildmode" && s.Value == "c-shared":
+				image.cShared = true
 			}
 		}
 	}
+	bi.updateGoImageIndex(image)
 
 	return err
 }
@@ -1223,6 +1267,7 @@ func (bi *BinaryInfo) LoadImageBinaryInfoAgain(n int) error {
 		image.loadErr = err
 	}
 	bi.macOSDebugFrameBugWorkaround()
+	bi.updateGoImageIndex(image)
 	return err
 }
 
@@ -1542,7 +1587,7 @@ func (bi *Image) findCompileUnitForOffset(off dwarf.Offset) *compileUnit {
 
 // Producer returns the value of DW_AT_producer.
 func (bi *BinaryInfo) Producer() string {
-	for _, cu := range bi.Images[0].compileUnits {
+	for _, cu := range bi.goImage().compileUnits {
 		if cu.isgo && cu.producer != "" {
 			return cu.producer
 		}
@@ -1857,11 +1902,14 @@ func loadBinaryInfoElf(bi *BinaryInfo, image *Image, path string, addr uint64, w
 		// determine g struct offset only when loading the executable file
 		wg.Add(1)
 		go bi.setGStructOffsetElf(image, dwarfFile, wg)
-	} else if elfFile.Machine == elf.EM_X86_64 && len(bi.Images) > 0 && !bi.Images[0].IsGo {
+	} else if elfFile.Machine == elf.EM_X86_64 && !bi.Images[0].IsGo {
 		// The Go runtime may be in a shared library loaded by a non-Go executable
 		// (buildmode=c-shared), in which case the G pointer is in the TLS block of
 		// the library, not of the executable.
-		bi.setGStructOffsetElfSharedLib(image, elfFile)
+		// This checks the executable, not goImage: whether this image is a Go
+		// image, and so the image containing the Go runtime, is only known once
+		// it is loaded. The executable is fully loaded before any other image.
+		findTLSGGOTEntryElf(image, elfFile)
 	}
 	return nil
 }
@@ -2063,25 +2111,17 @@ func (bi *BinaryInfo) setGStructOffsetElf(image *Image, exe *elf.File, wg *sync.
 	}
 }
 
-// setGStructOffsetElfSharedLib sets the offset of the G pointer in thread
-// local storage when the Go runtime is in a shared library built with
-// buildmode=c-shared and loaded by a non-Go executable on x86_64.
+// findTLSGGOTEntryElf finds the GOT entry holding the offset of the G
+// pointer from the thread pointer, for a Go shared library built with
+// buildmode=c-shared on x86_64.
 //
 // The library accesses runtime.tlsg with the initial-exec TLS model: the
 // offset of the G pointer from the thread pointer is stored in a GOT entry,
 // filled by the dynamic linker through a R_X86_64_TPOFF64 relocation. The
 // offset depends on where the library's TLS block was placed at load time, so
 // it can't be computed from the file: the GOT entry is read from the target
-// memory instead.
-func (bi *BinaryInfo) setGStructOffsetElfSharedLib(image *Image, exe *elf.File) {
-	if bi.gStructOffsetIsPtr {
-		// Already set by another Go shared library.
-		return
-	}
-	tlsg := getSymbol(image, bi.logger, exe, "runtime.tlsg")
-	if tlsg == nil {
-		return
-	}
+// memory instead (see GStructOffset).
+func findTLSGGOTEntryElf(image *Image, exe *elf.File) {
 	rela := exe.Section(".rela.dyn")
 	if rela == nil {
 		return
@@ -2090,11 +2130,12 @@ func (bi *BinaryInfo) setGStructOffsetElfSharedLib(image *Image, exe *elf.File) 
 	if err != nil {
 		return
 	}
-	var (
-		dynsyms, _ = exe.DynamicSymbols()
-		got        uint64
-	)
 	const relaSize = 24 // sizeof(Elf64_Rela)
+	var (
+		tlsg       *elf.Symbol
+		dynsyms    []elf.Symbol
+		symsLoaded bool
+	)
 	for i := 0; i+relaSize <= len(data); i += relaSize {
 		off := exe.ByteOrder.Uint64(data[i:])
 		info := exe.ByteOrder.Uint64(data[i+8:])
@@ -2102,20 +2143,30 @@ func (bi *BinaryInfo) setGStructOffsetElfSharedLib(image *Image, exe *elf.File) 
 		if elf.R_X86_64(elf.R_TYPE64(info)) != elf.R_X86_64_TPOFF64 {
 			continue
 		}
+		if !symsLoaded {
+			// Only read the symbols of libraries that have TLS relocations.
+			symsLoaded = true
+			symbols, _ := exe.Symbols()
+			for i := range symbols {
+				if symbols[i].Name == "runtime.tlsg" {
+					tlsg = &symbols[i]
+					break
+				}
+			}
+			if tlsg == nil {
+				return
+			}
+			dynsyms, _ = exe.DynamicSymbols()
+		}
 		// runtime.tlsg is a local symbol, so the relocation usually has no
 		// symbol and its addend is the offset of runtime.tlsg in the TLS block.
 		sym := elf.R_SYM64(info)
 		if (sym == 0 && addend == tlsg.Value) ||
 			(sym > 0 && int(sym) <= len(dynsyms) && dynsyms[sym-1].Name == "runtime.tlsg") {
-			got = off
-			break
+			image.tlsgGOTEntry = image.StaticBase + off
+			return
 		}
 	}
-	if got == 0 {
-		return
-	}
-	bi.gStructOffset = image.StaticBase + got
-	bi.gStructOffsetIsPtr = true
 }
 
 func getSymbol(image *Image, logger logflags.Logger, exe *elf.File, name string) *elf.Symbol {
@@ -3412,8 +3463,9 @@ type PackageBuildInfo struct {
 // files constituting the package.
 func (bi *BinaryInfo) ListPackagesBuildInfo(includeFiles bool) []*PackageBuildInfo {
 	m := make(map[string]*PackageBuildInfo)
-	for _, cu := range bi.Images[0].compileUnits {
-		if cu.image != bi.Images[0] || !cu.isgo || cu.lineInfo == nil {
+	goimage := bi.goImage()
+	for _, cu := range goimage.compileUnits {
+		if cu.image != goimage || !cu.isgo || cu.lineInfo == nil {
 			//TODO(aarzilli): what's the correct thing to do for plugins?
 			continue
 		}

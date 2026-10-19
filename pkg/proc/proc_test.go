@@ -6363,6 +6363,12 @@ func TestNonGoBinaryWithGoDlopenGoroutines(t *testing.T) {
 	if g == nil || g.CurrentLoc.Fn == nil || g.CurrentLoc.Fn.Name != "main.GoFunction" {
 		t.Errorf("expected the current goroutine to be stopped in main.GoFunction, got %v", g)
 	}
+
+	// Information about the Go runtime must be read from the Go shared
+	// library, not from the executable.
+	if p.BinInfo().Producer() == "" {
+		t.Error("could not find the producer of the Go shared library")
+	}
 }
 
 func TestNonGoBinaryWithGoDlopenAttach(t *testing.T) {
@@ -6440,6 +6446,19 @@ func TestNonGoBinaryWithGoDlopenAttach(t *testing.T) {
 	assertNoError(err, t, "ThreadLocation")
 	if loc.Fn == nil || loc.Fn.Name != "main.GoFunction" {
 		t.Fatalf("expected to stop in main.GoFunction, stopped at %v", loc)
+	}
+
+	// The Go-specific breakpoints must have been set up for the Go shared
+	// library that was already loaded when attaching.
+	found := false
+	for _, bp := range p.Breakpoints().M {
+		if bp.Logical != nil && bp.Logical.Name == proc.UnrecoveredPanic {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("unrecovered-panic breakpoint not set after attaching")
 	}
 }
 

@@ -7,7 +7,6 @@ import (
 	"os"
 	"sort"
 	"strings"
-	"sync"
 
 	"github.com/go-delve/delve/pkg/dwarf/op"
 	"github.com/go-delve/delve/pkg/goversion"
@@ -84,9 +83,12 @@ type Target struct {
 
 	partOfGroup bool
 
-	// onInitialGoImage ensures that Go-specific breakpoints are only set up
-	// once when transitioning from no Go images to having a Go image.
-	onInitialGoImage sync.Once
+	// disableAsyncPreempt is true if async preemption must be disabled once
+	// the Go runtime is loaded.
+	disableAsyncPreempt bool
+	// goImageSetUp is true once the Go-specific setup (see setUpGoImage) has
+	// been done.
+	goImageSetUp bool
 }
 
 type KeepSteppingBreakpoints uint8
@@ -222,17 +224,13 @@ func (grp *TargetGroup) newTarget(p ProcessInternal, pid int, currentThread Thre
 	t.selectedGoroutine = g
 
 	t.Breakpoints().Logical = grp.LogicalBreakpoints
-	t.createUnrecoveredPanicBreakpoint()
-	t.createFatalThrowBreakpoint()
-	t.createPluginOpenBreakpoint()
 
 	t.gcache.init(p.BinInfo())
 	t.scache.init()
 	t.fakeMemoryRegistryMap = make(map[string]*compositeMemory)
 
-	if grp.cfg.DisableAsyncPreempt {
-		setAsyncPreemptOff(t, 1)
-	}
+	t.disableAsyncPreempt = grp.cfg.DisableAsyncPreempt
+	t.setUpGoImage()
 
 	return t, nil
 }
@@ -247,7 +245,7 @@ func (t *Target) IsCgo() bool {
 	if t.iscgo != nil {
 		return *t.iscgo
 	}
-	scope := globalScope(t, t.BinInfo(), t.BinInfo().Images[0], t.Memory())
+	scope := globalScope(t, t.BinInfo(), t.BinInfo().goImage(), t.Memory())
 	iscgov, err := scope.findGlobal("runtime", "iscgo")
 	if err == nil {
 		iscgov.loadValue(LoadFullValue())
@@ -394,7 +392,7 @@ func setAsyncPreemptOff(p *Target, v int64) {
 		return
 	}
 	logger := p.BinInfo().logger
-	scope := globalScope(p, p.BinInfo(), p.BinInfo().Images[0], p.Memory())
+	scope := globalScope(p, p.BinInfo(), p.BinInfo().goImage(), p.Memory())
 	// +rtype -var debug anytype
 	debugv, err := scope.findGlobal("runtime", "debug")
 	if err != nil {
@@ -489,36 +487,36 @@ func (t *Target) CreateSharedLibBreakpoint(rBrkAddr uint64) {
 }
 
 func (t *Target) sharedLibCallback(th Thread, tgt *Target) (bool, error) {
-	// Check if any newly loaded image is a Go binary.
 	// ElfUpdateSharedObjects has already run by this point (called in stop1
 	// before breakpoint callbacks), so new images are already in BinInfo.
-	return tgt.InitGoImage(), nil
+	// Stop only if the Go runtime was loaded by this event.
+	return tgt.setUpGoImage(), nil
 }
 
-// InitGoImage sets up the Go-specific breakpoints of a non-Go executable
-// once a Go image (e.g. a Go shared library) is loaded. It must be called
-// by backends when attaching to a process that may have already loaded a
-// Go image, as no shared library load event will be received for it.
-// It returns true if the breakpoints were set up by this call.
-func (t *Target) InitGoImage() bool {
-	bi := t.BinInfo()
-	if len(bi.Images) == 0 || bi.Images[0].IsGo || !bi.HasGoImage() {
-		// Go executables set up the breakpoints when the target is created.
+// setUpGoImage creates the Go-specific breakpoints and disables async
+// preemption if needed, once the image containing the Go runtime is loaded.
+// For Go executables this happens when the target is created. For non-Go
+// executables it happens when a Go shared library is loaded, or, if it was
+// already loaded when attaching, before the target is first resumed.
+// It returns true if the setup was done by this call.
+func (t *Target) setUpGoImage() bool {
+	goimage := t.BinInfo().goImage()
+	if t.goImageSetUp || !goimage.IsGo {
 		return false
 	}
+	t.goImageSetUp = true
+	if goimage.index != 0 {
+		logflags.DebuggerLogger().Infof("Go runtime found in %s, setting up Go-specific breakpoints", goimage.Path)
+	}
 
-	didRun := false
-	t.onInitialGoImage.Do(func() {
-		didRun = true
-		logger := logflags.DebuggerLogger()
-		logger.Info("Go shared library detected, setting up Go-specific breakpoints")
+	t.createUnrecoveredPanicBreakpoint()
+	t.createFatalThrowBreakpoint()
+	t.createPluginOpenBreakpoint()
 
-		t.createUnrecoveredPanicBreakpoint()
-		t.createFatalThrowBreakpoint()
-		t.createPluginOpenBreakpoint()
-	})
-
-	return didRun
+	if t.disableAsyncPreempt {
+		setAsyncPreemptOff(t, 1)
+	}
+	return true
 }
 
 // CurrentThread returns the currently selected thread which will be used
