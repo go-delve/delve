@@ -397,18 +397,11 @@ func diffMaybe(t *testing.T, filename string, generated []byte) {
 	t.Logf("diff:\n%s", string(out))
 }
 
-func experimentalBuildTag(goos, goarch string) string {
-	switch goos + "/" + goarch {
-	case "windows/arm64":
-		return "exp.winarm64"
-	case "linux/ppc64le":
-		return "exp.linuxppc64le"
-	case "linux/riscv64":
-		return "exp.linuxriscv64"
-	case "linux/loong64":
-		return "exp.linuxloong64"
-	}
-	return ""
+var experimentalBuildTags = map[string]string{
+	"windows/arm64": "exp.winarm64",
+	"linux/ppc64le": "exp.linuxppc64le",
+	"linux/riscv64": "exp.linuxriscv64",
+	"linux/loong64": "exp.linuxloong64",
 }
 
 // goToolCommand runs a generator with the same experimental architecture support
@@ -424,7 +417,7 @@ func goToolCommand(goos, goarch string, args ...string) *exec.Cmd {
 	}
 	cmd := exec.Command("go", append(a, args...)...)
 	cmd.Dir = protest.ProjectRoot()
-	if tag := experimentalBuildTag(goos, goarch); tag != "" {
+	if tag := experimentalBuildTags[goos+"/"+goarch]; tag != "" {
 		cmd.Env = append(os.Environ(), "GOFLAGS="+os.Getenv("GOFLAGS")+" -tags="+tag)
 	}
 	return cmd
@@ -1868,7 +1861,7 @@ func TestCapsLock(t *testing.T) {
 	expectedFile := fmt.Sprintf("_scripts/capslock_%s_%s-output.txt", goos, goarch)
 
 	args := []string{"-packages", "./cmd/dlv"}
-	if tag := experimentalBuildTag(goos, goarch); tag != "" {
+	if tag := experimentalBuildTags[goos+"/"+goarch]; tag != "" {
 		args = append([]string{"-buildtags", tag}, args...)
 	}
 
