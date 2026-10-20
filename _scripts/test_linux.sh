@@ -55,10 +55,12 @@ fi
 
 GOPATH=$(pwd)/go
 export GOPATH
-export PATH=$PATH:$GOROOT/bin:$GOPATH/bin
+export PATH=$GOROOT/bin:$GOPATH/bin:$PATH
 go version
 if [ "$arch" != "ppc64le" ]; then
-	go install honnef.co/go/tools/cmd/staticcheck@2026.2rc1 || true
+	# Build with the selected Go toolchain: an older binary cannot parse newer
+	# Go syntax even when its staticcheck version supports the export format.
+	go install honnef.co/go/tools/cmd/staticcheck@2026.2.2
 fi
 
 go install github.com/google/capslock/cmd/capslock@latest

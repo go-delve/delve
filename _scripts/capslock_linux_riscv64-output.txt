@@ -32,9 +32,9 @@ MODIFY_SYSTEM_STATE/SIGNALS: 1 references
 NETWORK: 1 references
 OPERATING_SYSTEM: 1 references
 READ_SYSTEM_STATE: 2 references
-REFLECT: 2 references
+REFLECT: 1 references
 RUNTIME: 1 references
 SYSTEM_CALLS: 1 references
 UNANALYZED: 1 references
-UNSAFE_POINTER: 2 references
+UNSAFE_POINTER: 1 references
 
