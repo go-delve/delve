@@ -1069,7 +1069,7 @@ var errTracebackAncestorsDisabled = errors.New("tracebackancestors is disabled")
 
 // Ancestors returns the list of ancestors for g.
 func Ancestors(p *Target, g *G, n int) ([]Ancestor, error) {
-	scope := globalScope(p, p.BinInfo(), p.BinInfo().Images[0], p.Memory())
+	scope := globalScope(p, p.BinInfo(), p.BinInfo().goImage(), p.Memory())
 	tbav, err := scope.EvalExpression("runtime.debug.tracebackancestors", loadSingleValue)
 	if err == nil && tbav.Unreadable == nil && tbav.Kind == reflect.Int {
 		tba, _ := constant.Int64Val(tbav.Value)
