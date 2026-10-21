@@ -38,6 +38,6 @@ func ptraceGetRegset(tid int) (regset amd64util.AMD64Xstate, err error) {
 	}
 
 	regset.Xsave = xstateargs[:iov.Len]
-	err = amd64util.AMD64XstateRead(regset.Xsave, false, &regset, cpuid.AMD64XstateZMMHi256Offset())
+	err = amd64util.AMD64XstateRead(regset.Xsave, false, &regset, cpuid.AMD64XstateZMMHi256Offset(), cpuid.AMD64XstateHi16ZMMOffset())
 	return
 }

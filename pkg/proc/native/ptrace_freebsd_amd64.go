@@ -74,7 +74,7 @@ func ptraceGetRegset(id int) (*amd64util.AMD64Xstate, error) {
 	if err != nil {
 		return nil, err
 	}
-	err = amd64util.AMD64XstateRead(regset.Xsave, false, &regset, cpuid.AMD64XstateZMMHi256Offset())
+	err = amd64util.AMD64XstateRead(regset.Xsave, false, &regset, cpuid.AMD64XstateZMMHi256Offset(), cpuid.AMD64XstateHi16ZMMOffset())
 	return &regset, err
 }
 

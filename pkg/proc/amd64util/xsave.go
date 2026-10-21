@@ -13,11 +13,13 @@ import (
 // Manual, Volume 1: Basic Architecture.
 type AMD64Xstate struct {
 	AMD64PtraceFpRegs
-	Xsave       []byte // raw xsave area
-	AvxState    bool   // contains AVX state
-	YmmSpace    [256]byte
-	Avx512State bool // contains AVX512 state
-	ZmmSpace    [512]byte
+	Xsave        []byte // raw xsave area
+	AvxState     bool   // contains AVX state
+	YmmSpace     [256]byte
+	Avx512State  bool // contains AVX512 state
+	ZmmSpace     [512]byte
+	Hi16ZmmState bool // contains ZMM16 through ZMM31
+	Hi16ZmmSpace [1024]byte
 
 	zmmHi256offset int
 }
@@ -70,6 +72,13 @@ func (xstate *AMD64Xstate) Decode() []proc.Register {
 		}
 	}
 
+	if xstate.Hi16ZmmState {
+		for i := 0; i < len(xstate.Hi16ZmmSpace); i += 64 {
+			n := i / 64
+			regs = proc.AppendBytesRegister(regs, fmt.Sprintf("XMM%d", n+16), xstate.Hi16ZmmSpace[i:i+64])
+		}
+	}
+
 	return regs
 }
 
@@ -89,7 +98,7 @@ type xstate_bv uint64
 
 func (s xstate_bv) hasAVX() bool       { return s&(1<<2) != 0 }
 func (s xstate_bv) hasZMM_Hi256() bool { return s&(1<<6) != 0 }
-func (s xstate_bv) hasHi16_ZMM() bool  { return s&(1<<7) != 0 } //lint:ignore U1000 future use
+func (s xstate_bv) hasHi16_ZMM() bool  { return s&(1<<7) != 0 }
 func (s xstate_bv) hasPKRU() bool      { return s&(1<<9) != 0 }
 
 // AMD64XstateRead reads a byte array containing an XSAVE area into regset.
@@ -98,7 +107,7 @@ func (s xstate_bv) hasPKRU() bool      { return s&(1<<9) != 0 }
 // See Section 13.1 (and following) of Intel® 64 and IA-32 Architectures
 // Software Developer’s Manual, Volume 1: Basic Architecture.
 // If xstateZMMHi256Offset is zero, it will be guessed.
-func AMD64XstateRead(xstateargs []byte, readLegacy bool, regset *AMD64Xstate, xstateZMMHi256Offset int) error {
+func AMD64XstateRead(xstateargs []byte, readLegacy bool, regset *AMD64Xstate, xstateZMMHi256Offset, xstateHi16ZMMOffset int) error {
 	if _XSAVE_HEADER_START+_XSAVE_HEADER_LEN >= len(xstateargs) {
 		return nil
 	}
@@ -148,9 +157,16 @@ func AMD64XstateRead(xstateargs []byte, readLegacy bool, regset *AMD64Xstate, xs
 	regset.Avx512State = true
 	copy(regset.ZmmSpace[:], avx512state[:len(regset.ZmmSpace)])
 
-	// TODO(aarzilli): if xstate_bv.hasHi16_ZMM() is set then xstateargs[1664:2688]
-	// contains ZMM16 through ZMM31, those aren't just the higher 256bits, it's
-	// the full register so each is 64 bytes (512bits)
+	if xstate_bv.hasHi16_ZMM() {
+		if xstateHi16ZMMOffset == 0 {
+			xstateHi16ZMMOffset = xstateZMMHi256Offset + len(regset.ZmmSpace)
+		}
+		if xstateHi16ZMMOffset < 0 || xstateHi16ZMMOffset > len(xstateargs)-len(regset.Hi16ZmmSpace) {
+			return fmt.Errorf("Hi16_ZMM state at offset %d exceeds XSAVE area of %d bytes", xstateHi16ZMMOffset, len(xstateargs))
+		}
+		regset.Hi16ZmmState = true
+		copy(regset.Hi16ZmmSpace[:], xstateargs[xstateHi16ZMMOffset:])
+	}
 
 	return nil
 }
