@@ -1902,13 +1902,10 @@ func loadBinaryInfoElf(bi *BinaryInfo, image *Image, path string, addr uint64, w
 		// determine g struct offset only when loading the executable file
 		wg.Add(1)
 		go bi.setGStructOffsetElf(image, dwarfFile, wg)
-	} else if elfFile.Machine == elf.EM_X86_64 && !bi.Images[0].IsGo {
+	} else if elfFile.Machine == elf.EM_X86_64 && !bi.goImage().IsGo {
 		// The Go runtime may be in a shared library loaded by a non-Go executable
 		// (buildmode=c-shared), in which case the G pointer is in the TLS block of
 		// the library, not of the executable.
-		// This checks the executable, not goImage: whether this image is a Go
-		// image, and so the image containing the Go runtime, is only known once
-		// it is loaded. The executable is fully loaded before any other image.
 		findTLSGGOTEntryElf(image, elfFile)
 	}
 	return nil

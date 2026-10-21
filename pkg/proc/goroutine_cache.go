@@ -16,10 +16,6 @@ func (gcache *goroutineCache) init(bi *BinaryInfo) {
 		return
 	}
 
-	// AddrFor returns 0 when the variable can't be found, which
-	// getRuntimeAllg treats as "no goroutine list" (ErrNoRuntimeAllG): a
-	// global variable can't be at address 0. The errors are only logged, as
-	// they all have the same outcome.
 	gcache.allglenAddr, err = rdr.AddrFor("runtime.allglen", goimage.StaticBase, bi.Arch.PtrSize())
 	if err != nil {
 		bi.logger.Debugf("could not find runtime.allglen in %s: %v", goimage.Path, err)
@@ -39,7 +35,7 @@ func (gcache *goroutineCache) init(bi *BinaryInfo) {
 
 func (gcache *goroutineCache) getRuntimeAllg(bi *BinaryInfo, mem MemoryReadWriter) (uint64, uint64, error) {
 	if (gcache.allglenAddr == 0 || gcache.allgentryAddr == 0) && bi.goImage().IsGo {
-		// The Go runtime is in a shared library loaded after the cache was
+		// The Go runtime could be in a shared library loaded after the cache was
 		// initialized (e.g. a Go library loaded with dlopen by a non-Go program).
 		gcache.init(bi)
 	}
