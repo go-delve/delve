@@ -197,6 +197,12 @@ func testOutput(t *testing.T, dlvbin, output string, delveCmds []string) (stdout
 		t.Errorf("running %q: file not created: %v", delveCmds, err)
 	}
 
+	// Ensure bundle cleanup is exercised even when the compiler does not
+	// produce split DWARF. Do not overwrite a compiler-generated debug file.
+	dwarfDir := filepath.Join(debugbin+".dSYM", "Contents", "Resources", "DWARF")
+	assertNoError(os.MkdirAll(dwarfDir, 0755), t, "create dSYM directory")
+	assertNoError(os.WriteFile(filepath.Join(dwarfDir, "cleanup-marker"), nil, 0600), t, "create dSYM cleanup marker")
+
 	for _, c := range delveCmds {
 		fmt.Fprintf(stdin, "%s\n", c)
 	}
@@ -205,6 +211,10 @@ func testOutput(t *testing.T, dlvbin, output string, delveCmds []string) (stdout
 	// errors even after successful debug session.
 	cmd.Wait()
 	stdout, stderr = stdoutBuf.Bytes(), stderrBuf.Bytes()
+
+	if _, err := os.Stat(debugbin + ".dSYM"); !os.IsNotExist(err) {
+		t.Errorf("running %q: dSYM bundle %v was not deleted: %v\nstdout is %q, stderr is %q", delveCmds, debugbin+".dSYM", err, stdout, stderr)
+	}
 
 	_, err = os.Stat(debugbin)
 	if err == nil {
@@ -226,7 +236,7 @@ func testOutput(t *testing.T, dlvbin, output string, delveCmds []string) (stdout
 }
 
 // TestOutput verifies that the debug executable is created in the correct path
-// and removed after exit.
+// and removed along with its dSYM bundle after exit.
 func TestOutput(t *testing.T) {
 	t.Parallel()
 	dlvbin := protest.GetDlvBinary(t)
