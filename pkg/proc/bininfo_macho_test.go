@@ -95,14 +95,14 @@ func TestLoadingMachoIncompleteDSYMFallsBack(t *testing.T) {
 	checkMachoStrippedFallback(t, stripped)
 }
 
-func TestLoadingMachoEmbeddedDwarfTakesPrecedence(t *testing.T) {
+func TestLoadingMachoDSYMTakesPrecedence(t *testing.T) {
 	for _, compression := range []string{"true", "false"} {
 		t.Run("compressdwarf="+compression, func(t *testing.T) {
 			path := buildMachoFixture(t, "-compressdwarf="+compression)
 			writeMachoDSYM(t, path, machoDSYMFixture(t, path))
 			bi := loadMachoBinaryInfo(t, path)
-			if bi.Images[0].Stripped() || bi.Images[0].sepDebugCloser != nil {
-				t.Fatal("adjacent dSYM displaced embedded DWARF")
+			if bi.Images[0].Stripped() || bi.Images[0].sepDebugCloser == nil {
+				t.Fatal("UUID-matched dSYM did not take precedence over embedded DWARF")
 			}
 		})
 	}

@@ -2226,17 +2226,15 @@ func loadBinaryInfoMacho(bi *BinaryInfo, image *Image, path string, entryPoint u
 	// Go's Darwin linker can put all DWARF in an adjacent dSYM bundle.
 	// Keep runtime metadata and __eh_frame sourced from the executable.
 	dwarfFile := exe
-	if exe.Section("__debug_info") == nil && exe.Section("__zdebug_info") == nil {
-		if separate, err := findSeparateDebugFileMacho(exe, path); err == nil {
-			dwarfFile = separate
-			image.sepDebugCloser = separate
-			macOSShortSectionNamesWorkaround(dwarfFile)
-		} else {
-			bi.logger.Debugf("could not open separate Mach-O debug info: %v", err)
-		}
+	if separate, err := findSeparateDebugFileMacho(exe, path); err == nil {
+		dwarfFile = separate
+		image.sepDebugCloser = separate
+		macOSShortSectionNamesWorkaround(dwarfFile)
+	} else {
+		bi.logger.Debugf("could not open separate Mach-O debug info: %v", err)
 	}
-	image.dwarf, dwerr = dwarfFile.DWARF()
 	var debugInfoBytes, debugLineBytes []byte
+	image.dwarf, dwerr = dwarfFile.DWARF()
 	if dwerr == nil {
 		debugInfoBytes, dwerr = godwarf.GetDebugSectionMacho(dwarfFile, "info")
 		if dwerr == nil {
@@ -2247,10 +2245,9 @@ func loadBinaryInfoMacho(bi *BinaryInfo, image *Image, path string, entryPoint u
 		}
 	}
 	if dwerr != nil {
-		// An incomplete dSYM must not disable the executable's stripped
-		// fallback, even if its debug_info alone was readable.
 		image.dwarf = nil
 		if image.sepDebugCloser != nil {
+			bi.logger.Debugf("could not read separate Mach-O debug info: %v", dwerr)
 			image.sepDebugCloser.Close()
 			image.sepDebugCloser = nil
 		}
@@ -2328,6 +2325,7 @@ func (bi *BinaryInfo) parseDebugFrameMacho(image *Image, dwarfFile, exe *macho.F
 	defer wg.Done()
 
 	debugFrameBytes, debugFrameErr := godwarf.GetDebugSectionMacho(dwarfFile, "frame")
+	// __eh_frame describes executable code and is not supplied by the dSYM.
 	ehFrameSection := exe.Section("__eh_frame")
 	var ehFrameBytes []byte
 	var ehFrameAddr uint64
