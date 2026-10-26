@@ -19,7 +19,7 @@ func Launch(_ []string, _ string, _ proc.LaunchFlags, _ []string, _ string, _ st
 }
 
 // Attach returns ErrNativeBackendDisabled.
-func Attach(_ int, _ *proc.WaitFor, _ []string) (*proc.TargetGroup, error) {
+func Attach(_ int, _ string, _ *proc.WaitFor, _ []string) (*proc.TargetGroup, error) {
 	return nil, ErrNativeBackendDisabled
 }
 

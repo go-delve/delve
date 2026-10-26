@@ -2721,7 +2721,7 @@ func TestAttachDetach(t *testing.T) {
 
 	switch testBackend {
 	case "native":
-		p, err = native.Attach(cmd.Process.Pid, nil, []string{})
+		p, err = native.Attach(cmd.Process.Pid, "", nil, []string{})
 	case "lldb":
 		path := ""
 		if runtime.GOOS == "darwin" {
@@ -5851,7 +5851,7 @@ func TestWaitForAttach(t *testing.T) {
 
 	switch testBackend {
 	case "native":
-		p, err = native.Attach(0, fixtureState.waitFor, []string{})
+		p, err = native.Attach(0, "", fixtureState.waitFor, []string{})
 	case "lldb":
 		path := ""
 		if runtime.GOOS == "darwin" {
