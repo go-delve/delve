@@ -6447,19 +6447,37 @@ func TestLaunchRequestWithEnv(t *testing.T) {
 }
 
 func TestAttachRequest(t *testing.T) {
+	testAttachRequest(t, nil)
+}
+
+func TestAttachRequestWithEmptyProgram(t *testing.T) {
+	program := ""
+	testAttachRequest(t, &program)
+}
+
+func testAttachRequest(t *testing.T, program *string) {
+	t.Helper()
 	if runtime.GOOS == "windows" {
 		t.Skip("test skipped on Windows, see https://delve.teamcity.com/project/Delve_windows for details")
 	}
 	runTest(t, "loopprog", func(client *daptest.Client, fixture protest.Fixture) {
 		// Start the program to attach to
 		cmd := execFixture(t, fixture)
+		defer func() {
+			_ = cmd.Process.Kill()
+			_ = cmd.Wait()
+		}()
 
 		runDebugSessionWithBPs(t, client, "attach",
 			// Attach
 			func() {
-				client.AttachRequest(map[string]any{
+				args := map[string]any{
 					/*"mode": "local" by default*/ "processId": cmd.Process.Pid, "stopOnEntry": false,
-				})
+				}
+				if program != nil {
+					args["program"] = *program
+				}
+				client.AttachRequest(args)
 				client.ExpectCapabilitiesEventSupportTerminateDebuggee(t)
 			},
 			// Set breakpoints
@@ -7563,6 +7581,21 @@ func TestAttachRemoteToDlvLaunchHaltedStopOnEntry(t *testing.T) {
 	_, dbg := launchDebuggerWithTargetHalted(t, "increment")
 	runTestWithDebugger(t, dbg, func(client *daptest.Client) {
 		client.AttachRequest(map[string]any{"mode": "remote", "stopOnEntry": true})
+		client.ExpectInitializedEvent(t)
+		client.ExpectAttachResponse(t)
+		client.ConfigurationDoneRequest()
+		client.ExpectStoppedEvent(t)
+		client.ExpectConfigurationDoneResponse(t)
+	})
+}
+
+func TestAttachRemoteIgnoresProgram(t *testing.T) {
+	_, dbg := launchDebuggerWithTargetHalted(t, "increment")
+	runTestWithDebugger(t, dbg, func(client *daptest.Client) {
+		client.AttachRequest(map[string]any{
+			"mode": "remote", "stopOnEntry": true,
+			"program": filepath.Join(t.TempDir(), "missing-executable"),
+		})
 		client.ExpectInitializedEvent(t)
 		client.ExpectAttachResponse(t)
 		client.ConfigurationDoneRequest()
