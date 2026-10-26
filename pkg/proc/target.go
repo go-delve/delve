@@ -189,6 +189,11 @@ func (grp *TargetGroup) newTarget(p ProcessInternal, pid int, currentThread Thre
 
 	err = p.BinInfo().LoadBinaryInfo(path, entryPoint, grp.cfg.DebugInfoDirs)
 	if err != nil {
+		// A filesystem error does not establish that the binary is non-Go.
+		var pathErr *os.PathError
+		if errors.As(err, &pathErr) {
+			return nil, &ErrBadBinaryInfo{Err: err}
+		}
 		// If this is a non-Go binary, log a warning and continue.
 		// A Go shared object may be loaded later via dlopen.
 		if len(p.BinInfo().Images) > 0 && !p.BinInfo().Images[0].IsGo {
