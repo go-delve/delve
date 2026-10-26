@@ -135,10 +135,11 @@ func Launch(cmd []string, wd string, flags proc.LaunchFlags, debugInfoDirs []str
 	return tgt, nil
 }
 
-// Attach to an existing process with the given PID. Once attached, if
+// AttachWithPath attaches to an existing process with the given PID. Once attached, if
 // the DWARF information cannot be found in the binary, Delve will look
 // for external debug files in the directories passed in.
-func Attach(pid int, waitFor *proc.WaitFor, debugInfoDirs []string) (*proc.TargetGroup, error) {
+// If path is empty, the executable path is determined from the process.
+func AttachWithPath(pid int, path string, waitFor *proc.WaitFor, debugInfoDirs []string) (*proc.TargetGroup, error) {
 	if waitFor.Valid() {
 		var err error
 		pid, err = WaitFor(waitFor)
@@ -159,7 +160,7 @@ func Attach(pid int, waitFor *proc.WaitFor, debugInfoDirs []string) (*proc.Targe
 		return nil, err
 	}
 
-	tgt, err := dbp.initialize(findExecutable("", dbp.pid), debugInfoDirs)
+	tgt, err := dbp.initialize(findExecutable(path, dbp.pid), debugInfoDirs)
 	if err != nil {
 		detachWithoutGroup(dbp, false)
 		return nil, err

@@ -142,8 +142,9 @@ func findExePath(pid int) (string, error) {
 
 var debugPrivilegeRequested = false
 
-// Attach to an existing process with the given PID.
-func Attach(pid int, waitFor *proc.WaitFor, _ []string) (*proc.TargetGroup, error) {
+// AttachWithPath attaches to an existing process with the given PID.
+// If path is empty, the executable path is determined from the process.
+func AttachWithPath(pid int, path string, waitFor *proc.WaitFor, _ []string) (*proc.TargetGroup, error) {
 	var aperr error
 	if !debugPrivilegeRequested {
 		debugPrivilegeRequested = true
@@ -174,13 +175,16 @@ func Attach(pid int, waitFor *proc.WaitFor, _ []string) (*proc.TargetGroup, erro
 		}
 		return nil, err
 	}
-	exepath, err := findExePath(pid)
-	if err != nil {
-		return nil, err
+	if path == "" {
+		path, err = findExePath(pid)
+		if err != nil {
+			detachWithoutGroup(dbp, false)
+			return nil, err
+		}
 	}
-	tgt, err := dbp.initialize(exepath, []string{})
+	tgt, err := dbp.initialize(path, []string{})
 	if err != nil {
-		detachWithoutGroup(dbp, true)
+		detachWithoutGroup(dbp, false)
 		return nil, err
 	}
 	return tgt, nil
