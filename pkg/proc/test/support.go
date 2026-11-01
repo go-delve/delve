@@ -253,6 +253,7 @@ func RunTestsWithFixtures(m *testing.M) {
 	// Remove the fixtures.
 	for _, f := range fixtures {
 		os.Remove(f.Path)
+		os.RemoveAll(f.Path + ".dSYM")
 	}
 
 	for _, p := range pathsToRemove {
