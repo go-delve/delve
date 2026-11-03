@@ -2432,11 +2432,34 @@ func (scope *EvalScope) evalUnary(op *evalop.Unary, stack *evalStack) {
 	}
 	if xv.DwarfType != nil {
 		r := xv.newVariable("", 0, xv.DwarfType, scope.Mem)
-		r.Value = rc
+		r.Value = wrapIntValue(rc, r.Kind, xv.DwarfType.Size())
 		stack.push(r)
 		return
 	}
 	stack.push(newConstant(rc, xv.bi, xv.mem))
+}
+
+// wrapIntValue truncates v, the result of an arithmetic operation on a value
+// of kind kind and size size, to that size, the way Go's integer arithmetic
+// wraps around at run time. Values of other kinds are returned unchanged.
+func wrapIntValue(v constant.Value, kind reflect.Kind, size int64) constant.Value {
+	switch kind {
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		n, _ := constant.Int64Val(v)
+		return constant.MakeInt64(int64(convertInt(uint64(n), true, size)))
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		var n uint64
+		if constant.Sign(v) < 0 {
+			// Uint64Val ignores the sign of values that do not fit in an
+			// int64, Int64Val keeps their two's complement low bits.
+			i, _ := constant.Int64Val(v)
+			n = uint64(i)
+		} else {
+			n, _ = constant.Uint64Val(v)
+		}
+		return constant.MakeUint64(convertInt(n, false, size))
+	}
+	return v
 }
 
 func negotiateType(op token.Token, xv, yv *Variable) (godwarf.Type, error) {
@@ -2598,16 +2621,9 @@ func (scope *EvalScope) evalBinary(binop *evalop.Binary, stack *evalStack) {
 		}
 
 		r := xv.newVariable("", 0, typ, scope.Mem)
-		r.Value = rc
-		switch r.Kind {
-		case reflect.String:
+		r.Value = wrapIntValue(rc, r.Kind, typ.Size())
+		if r.Kind == reflect.String {
 			r.Len = xv.Len + yv.Len
-		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-			n, _ := constant.Int64Val(r.Value)
-			r.Value = constant.MakeInt64(int64(convertInt(uint64(n), true, typ.Size())))
-		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-			n, _ := constant.Uint64Val(r.Value)
-			r.Value = constant.MakeUint64(convertInt(n, false, typ.Size()))
 		}
 		stack.push(r)
 	}
