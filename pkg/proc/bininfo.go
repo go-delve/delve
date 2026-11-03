@@ -1622,6 +1622,32 @@ func (bi *BinaryInfo) getModuleData(mem MemoryReadWriter) ([]ModuleData, error) 
 
 // ELF ///////////////////////////////////////////////////////////////
 
+// resolveProcExePath resolves a /proc/<pid>/... link to an executable. It
+// returns exePath, which Delve can open (used to find debug info files next
+// to the executable), and targetPath, the path as seen by the process (used
+// for lookups in debug-info-directories).
+//
+// If the link does not resolve in Delve's mount namespace, because the
+// process is in a container or its executable was deleted, the link target
+// is looked up under /proc/<pid>/root. For example, /proc/1234/exe reading
+// as /app/server gives /proc/1234/root/app/server and /app/server.
+func resolveProcExePath(path string) (exePath, targetPath string) {
+	if resolved, err := filepath.EvalSymlinks(path); err == nil {
+		return resolved, resolved
+	}
+	// EvalSymlinks fails if the resolved path does not exist in our mount
+	// namespace. Readlink returns the text of the link without checking it.
+	// It fails if path is not a symlink, e.g. /proc/<pid>/root/app/server.
+	target, err := os.Readlink(path)
+	if err != nil || !filepath.IsAbs(target) {
+		return path, path
+	}
+	target = strings.TrimSuffix(target, " (deleted)")
+	// path is /proc/<pid>/...
+	pid, _, _ := strings.Cut(strings.TrimPrefix(path, "/proc/"), "/")
+	return filepath.Join("/proc", pid, "root", target), target
+}
+
 // openSeparateDebugInfo searches for a file containing the separate
 // debug info for the binary using the "build ID" method as described
 // in GDB's documentation [1], and if found returns two handles, one
@@ -1631,15 +1657,11 @@ func (bi *BinaryInfo) getModuleData(mem MemoryReadWriter) ([]ModuleData, error) 
 // Alternatively, if the debug file cannot be found be the build-id, Delve
 // will look in directories specified by the debug-info-directories config value.
 func (bi *BinaryInfo) openSeparateDebugInfo(image *Image, exe *elf.File, debugInfoDirectories []string) (*os.File, *elf.File, error) {
-	exePath := image.Path
-	exeName := filepath.Base(image.Path)
-	if strings.HasPrefix(image.Path, "/proc") {
-		var err error
-		exePath, err = filepath.EvalSymlinks(image.Path)
-		if err == nil {
-			exeName = filepath.Base(exePath)
-		}
+	exePath, targetPath := image.Path, image.Path
+	if strings.HasPrefix(image.Path, "/proc/") {
+		exePath, targetPath = resolveProcExePath(image.Path)
 	}
+	exeName := filepath.Base(targetPath)
 
 	var debugFilePath string
 
@@ -1683,7 +1705,7 @@ func (bi *BinaryInfo) openSeparateDebugInfo(image *Image, exe *elf.File, debugIn
 				check(filepath.Join(filepath.Dir(exePath), ".debug", debugLink))
 			}
 			if debugFilePath == "" {
-				suffix := filepath.Join(filepath.Dir(exePath)[1:], debugLink)
+				suffix := filepath.Join(filepath.Dir(targetPath)[1:], debugLink)
 				find(nil, suffix)
 			}
 			if debugFilePath == "" {
