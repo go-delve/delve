@@ -15,8 +15,9 @@ import (
 	"github.com/go-delve/delve/pkg/logflags"
 )
 
-// Remove the file at path and issue a warning to stderr if this fails.
-// This can be used to remove the temporary binary generated for the session.
+// Remove the file at path and its adjacent Darwin dSYM bundle, if present,
+// and issue a warning to stderr if this fails. This can be used to remove
+// the temporary binary generated for the session.
 func Remove(path string) {
 	var err error
 	// Open files can be removed on Unix, but not on Windows, where there also appears
@@ -36,6 +37,9 @@ func Remove(path string) {
 	}
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "could not remove %v: %v\n", path, err)
+	}
+	if err := os.RemoveAll(path + ".dSYM"); err != nil {
+		fmt.Fprintf(os.Stderr, "could not remove %v: %v\n", path+".dSYM", err)
 	}
 }
 

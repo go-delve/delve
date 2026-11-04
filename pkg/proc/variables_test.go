@@ -899,6 +899,11 @@ func getEvalExpressionTestCases() []varTest {
 		{"ni8 << 8", false, "0", "0", "int8", nil},
 		{"ni8 >> 1", false, "-3", "-3", "int8", nil},
 		{"bytearray[0] * bytearray[0]", false, "144", "144", "uint8", nil},
+		{"-bytearray[0]", false, "140", "140", "uint8", nil},
+		{"^bytearray[0]", false, "139", "139", "uint8", nil},
+		{"-(ni8 - 123)", false, "-128", "-128", "int8", nil},
+		{"-uint64(ni64)", false, "5", "5", "uint64", nil},
+		{"uint64(1) - uint64(ni64)", false, "6", "6", "uint64", nil},
 
 		// function call / typecast errors
 		{"unknownthing(1, 2)", false, "", "", "", altErrors("function calls not allowed without using 'call'", "could not find symbol value for unknownthing")},

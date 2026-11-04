@@ -1667,6 +1667,32 @@ func (bi *BinaryInfo) getModuleData(mem MemoryReadWriter) ([]ModuleData, error) 
 
 // ELF ///////////////////////////////////////////////////////////////
 
+// resolveProcExePath resolves a /proc/<pid>/... link to an executable. It
+// returns exePath, which Delve can open (used to find debug info files next
+// to the executable), and targetPath, the path as seen by the process (used
+// for lookups in debug-info-directories).
+//
+// If the link does not resolve in Delve's mount namespace, because the
+// process is in a container or its executable was deleted, the link target
+// is looked up under /proc/<pid>/root. For example, /proc/1234/exe reading
+// as /app/server gives /proc/1234/root/app/server and /app/server.
+func resolveProcExePath(path string) (exePath, targetPath string) {
+	if resolved, err := filepath.EvalSymlinks(path); err == nil {
+		return resolved, resolved
+	}
+	// EvalSymlinks fails if the resolved path does not exist in our mount
+	// namespace. Readlink returns the text of the link without checking it.
+	// It fails if path is not a symlink, e.g. /proc/<pid>/root/app/server.
+	target, err := os.Readlink(path)
+	if err != nil || !filepath.IsAbs(target) {
+		return path, path
+	}
+	target = strings.TrimSuffix(target, " (deleted)")
+	// path is /proc/<pid>/...
+	pid, _, _ := strings.Cut(strings.TrimPrefix(path, "/proc/"), "/")
+	return filepath.Join("/proc", pid, "root", target), target
+}
+
 // openSeparateDebugInfo searches for a file containing the separate
 // debug info for the binary using the "build ID" method as described
 // in GDB's documentation [1], and if found returns two handles, one
@@ -1676,15 +1702,11 @@ func (bi *BinaryInfo) getModuleData(mem MemoryReadWriter) ([]ModuleData, error) 
 // Alternatively, if the debug file cannot be found be the build-id, Delve
 // will look in directories specified by the debug-info-directories config value.
 func (bi *BinaryInfo) openSeparateDebugInfo(image *Image, exe *elf.File, debugInfoDirectories []string) (*os.File, *elf.File, error) {
-	exePath := image.Path
-	exeName := filepath.Base(image.Path)
-	if strings.HasPrefix(image.Path, "/proc") {
-		var err error
-		exePath, err = filepath.EvalSymlinks(image.Path)
-		if err == nil {
-			exeName = filepath.Base(exePath)
-		}
+	exePath, targetPath := image.Path, image.Path
+	if strings.HasPrefix(image.Path, "/proc/") {
+		exePath, targetPath = resolveProcExePath(image.Path)
 	}
+	exeName := filepath.Base(targetPath)
 
 	var debugFilePath string
 
@@ -1728,7 +1750,7 @@ func (bi *BinaryInfo) openSeparateDebugInfo(image *Image, exe *elf.File, debugIn
 				check(filepath.Join(filepath.Dir(exePath), ".debug", debugLink))
 			}
 			if debugFilePath == "" {
-				suffix := filepath.Join(filepath.Dir(exePath)[1:], debugLink)
+				suffix := filepath.Join(filepath.Dir(targetPath)[1:], debugLink)
 				find(nil, suffix)
 			}
 			if debugFilePath == "" {
@@ -1955,6 +1977,8 @@ func parseModuleData(dataSection []byte, tableAddr uint64) ([]byte, error) {
 	if off == -1 {
 		return nil, errors.New("could not find moduledata")
 	}
+	// moduledata can be near the end of the section, with less than a full
+	// search window remaining (for example, Go 1.25's Mach-O __noptrdata).
 	return dataSection[off:min(off+0x300, len(dataSection))], nil
 }
 
@@ -2329,8 +2353,34 @@ func loadBinaryInfoMacho(bi *BinaryInfo, image *Image, path string, entryPoint u
 	}
 	var dwerr error
 	macOSShortSectionNamesWorkaround(exe)
-	image.dwarf, dwerr = exe.DWARF()
+	// Go's Darwin linker can put all DWARF in an adjacent dSYM bundle.
+	// Keep runtime metadata and __eh_frame sourced from the executable.
+	dwarfFile := exe
+	if separate, err := findSeparateDebugFileMacho(exe, path); err == nil {
+		dwarfFile = separate
+		image.sepDebugCloser = separate
+		macOSShortSectionNamesWorkaround(dwarfFile)
+	} else {
+		bi.logger.Debugf("could not open separate Mach-O debug info: %v", err)
+	}
+	var debugInfoBytes, debugLineBytes []byte
+	image.dwarf, dwerr = dwarfFile.DWARF()
+	if dwerr == nil {
+		debugInfoBytes, dwerr = godwarf.GetDebugSectionMacho(dwarfFile, "info")
+		if dwerr == nil {
+			debugLineBytes, dwerr = godwarf.GetDebugSectionMacho(dwarfFile, "line")
+		}
+		if dwerr != nil && dwarfFile == exe {
+			return dwerr
+		}
+	}
 	if dwerr != nil {
+		image.dwarf = nil
+		if image.sepDebugCloser != nil {
+			bi.logger.Debugf("could not read separate Mach-O debug info: %v", dwerr)
+			image.sepDebugCloser.Close()
+			image.sepDebugCloser = nil
+		}
 		if len(bi.Images) <= 1 {
 			fmt.Fprintln(os.Stderr, "Warning: no debug info found, some functionality will be missing such as stack traces and variable evaluation.")
 		}
@@ -2342,30 +2392,52 @@ func loadBinaryInfoMacho(bi *BinaryInfo, image *Image, path string, entryPoint u
 		return nil
 	}
 	loadBinaryInfoGoRuntimeSymTableMacho(image, path, exe)
-	debugInfoBytes, err := godwarf.GetDebugSectionMacho(exe, "info")
-	if err != nil {
-		return err
-	}
-
 	image.dwarfReader = image.dwarf.Reader()
 
-	debugLineBytes, err := godwarf.GetDebugSectionMacho(exe, "line")
-	if err != nil {
-		return err
-	}
-	debugLocBytes, _ := godwarf.GetDebugSectionMacho(exe, "loc")
+	debugLocBytes, _ := godwarf.GetDebugSectionMacho(dwarfFile, "loc")
 	image.loclist2 = loclist.NewDwarf2Reader(debugLocBytes, bi.Arch.PtrSize())
-	debugLoclistBytes, _ := godwarf.GetDebugSectionMacho(exe, "loclists")
+	debugLoclistBytes, _ := godwarf.GetDebugSectionMacho(dwarfFile, "loclists")
 	image.loclist5 = loclist.NewDwarf5Reader(debugLoclistBytes)
-	debugAddrBytes, _ := godwarf.GetDebugSectionMacho(exe, "addr")
+	debugAddrBytes, _ := godwarf.GetDebugSectionMacho(dwarfFile, "addr")
 	image.debugAddr = godwarf.ParseAddr(debugAddrBytes)
-	debugLineStrBytes, _ := godwarf.GetDebugSectionMacho(exe, "line_str")
+	debugLineStrBytes, _ := godwarf.GetDebugSectionMacho(dwarfFile, "line_str")
 	image.debugLineStr = debugLineStrBytes
 
 	wg.Add(2)
-	go bi.parseDebugFrameMacho(image, exe, debugInfoBytes, wg)
+	go bi.parseDebugFrameMacho(image, dwarfFile, exe, debugInfoBytes, wg)
 	go bi.loadDebugInfoMaps(image, debugInfoBytes, debugLineBytes, wg, bi.setGStructOffsetMacho)
 	return nil
+}
+
+// machoUUID returns the 16-byte LC_UUID payload, or nil if it is absent.
+func machoUUID(f *macho.File) []byte {
+	const lcUUID = 0x1b
+	for _, load := range f.Loads {
+		raw := load.Raw()
+		if len(raw) == 24 && f.ByteOrder.Uint32(raw[:4]) == lcUUID {
+			return raw[8:24]
+		}
+	}
+	return nil
+}
+
+// findSeparateDebugFileMacho opens the adjacent dSYM only if its UUID matches
+// the executable. A stale or unrelated bundle must not supply debug addresses.
+func findSeparateDebugFileMacho(exe *macho.File, path string) (*macho.File, error) {
+	uuid := machoUUID(exe)
+	if uuid == nil {
+		return nil, errors.New("Mach-O executable has no LC_UUID")
+	}
+	dsymPath := filepath.Join(path+".dSYM", "Contents", "Resources", "DWARF", filepath.Base(path))
+	dsym, err := macho.Open(dsymPath)
+	if err != nil {
+		return nil, err
+	}
+	if !bytes.Equal(uuid, machoUUID(dsym)) {
+		dsym.Close()
+		return nil, fmt.Errorf("Mach-O UUID mismatch in %s", dsymPath)
+	}
+	return dsym, nil
 }
 
 func (bi *BinaryInfo) setGStructOffsetMacho() {
@@ -2380,10 +2452,11 @@ func (bi *BinaryInfo) setGStructOffsetMacho() {
 	bi.gStructOffset = 0x8a0
 }
 
-func (bi *BinaryInfo) parseDebugFrameMacho(image *Image, exe *macho.File, debugInfoBytes []byte, wg *sync.WaitGroup) {
+func (bi *BinaryInfo) parseDebugFrameMacho(image *Image, dwarfFile, exe *macho.File, debugInfoBytes []byte, wg *sync.WaitGroup) {
 	defer wg.Done()
 
-	debugFrameBytes, debugFrameErr := godwarf.GetDebugSectionMacho(exe, "frame")
+	debugFrameBytes, debugFrameErr := godwarf.GetDebugSectionMacho(dwarfFile, "frame")
+	// __eh_frame describes executable code and is not supplied by the dSYM.
 	ehFrameSection := exe.Section("__eh_frame")
 	var ehFrameBytes []byte
 	var ehFrameAddr uint64
