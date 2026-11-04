@@ -93,6 +93,11 @@ func (grp *TargetGroup) Continue() error {
 		for _, dbp := range grp.targets {
 			dbp.ClearCaches()
 		}
+		for it := (ValidTargets{Group: grp}); it.Next(); {
+			// The Go runtime may be in a shared library that was already loaded
+			// when attaching, or that was loaded while stopped for another reason.
+			it.setUpGoImage()
+		}
 		logflags.DebuggerLogger().Debugf("ContinueOnce")
 		trapthread, stopReason, contOnceErr := grp.procgrp.ContinueOnce(grp.cctx)
 		var traptgt *Target
@@ -528,7 +533,7 @@ func (grp *TargetGroup) Step() (err error) {
 // the current goroutine is g.
 func sameGoroutineCondition(bi *BinaryInfo, g *G, threadID int) ast.Expr {
 	if g == nil {
-		if len(bi.Images[0].compileUnits) == 0 {
+		if len(bi.goImage().compileUnits) == 0 {
 			// It's unclear what the right behavior is here. We are probably
 			// debugging a process without debug info, this means we can't properly
 			// create a same goroutine condition (we don't have a description for the

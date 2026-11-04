@@ -582,7 +582,7 @@ func (t *Target) SetEBPFTracepoint(fnName string) error {
 	// Get information on the Goroutine so we can tell the
 	// eBPF program where to find it in order to get the
 	// goroutine ID.
-	rdr := t.BinInfo().Images[0].DwarfReader()
+	rdr := t.BinInfo().goImage().DwarfReader()
 	rdr.SeekToTypeNamed("runtime.g")
 	typ, err := t.BinInfo().findType("runtime.g")
 	if err != nil {
