@@ -52,16 +52,13 @@ func ppc64leFixFrameUnwindContext(fctxt *frame.FrameContext, pc uint64, bi *Bina
 		a.sigreturnfn = bi.lookupOneFunc("runtime.sigreturn")
 	}
 	if fctxt == nil || (a.sigreturnfn != nil && pc >= a.sigreturnfn.Entry && pc < a.sigreturnfn.End) {
+		// ppc64le has no dedicated frame pointer (DWARF BP is r1/SP).
 		return &frame.FrameContext{
 			RetAddrReg: regnum.PPC64LE_LR,
 			Regs: map[uint64]frame.DWRule{
-				regnum.PPC64LE_PC: {
-					Rule:   frame.RuleOffset,
-					Offset: int64(-a.PtrSize()),
-				},
 				regnum.PPC64LE_LR: {
-					Rule:   frame.RuleOffset,
-					Offset: int64(-2 * a.PtrSize()),
+					Rule: frame.RuleRegister,
+					Reg:  regnum.PPC64LE_LR,
 				},
 				regnum.PPC64LE_SP: {
 					Rule:   frame.RuleValOffset,
@@ -71,7 +68,7 @@ func ppc64leFixFrameUnwindContext(fctxt *frame.FrameContext, pc uint64, bi *Bina
 			CFA: frame.DWRule{
 				Rule:   frame.RuleCFA,
 				Reg:    regnum.PPC64LE_SP,
-				Offset: int64(2 * a.PtrSize()),
+				Offset: 0,
 			},
 		}
 	}
@@ -91,18 +88,23 @@ func ppc64leFixFrameUnwindContext(fctxt *frame.FrameContext, pc uint64, bi *Bina
 	}
 	if fctxt.Regs[regnum.PPC64LE_LR].Rule == frame.RuleUndefined {
 		fctxt.Regs[regnum.PPC64LE_LR] = frame.DWRule{
-			Rule:   frame.RuleFramePointer,
-			Reg:    regnum.PPC64LE_LR,
-			Offset: 0,
+			Rule: frame.RuleRegister,
+			Reg:  regnum.PPC64LE_LR,
 		}
 	}
 	return fctxt
 }
 
 const ppc64cgocallSPOffsetSaveSlot = 32
-const ppc64prevG0schedSPOffsetSaveSlot = 40
+
+// runtime.cgocallback saves the previous g0.sched.sp at savedsp-24(SP)
+// in its 24+FIXED_FRAME (56-byte) frame: 24 + 32 - 24 = 32(R1)
+const ppc64prevG0schedSPOffsetSaveSlot = 32
 
 func ppc64leSwitchStack(it *stackIterator, callFrameRegs *op.DwarfRegisters) bool {
+	if it.sigret {
+		it.frame.Ret = callFrameRegs.Uint64Val(callFrameRegs.LRRegNum)
+	}
 	if it.frame.Current.Fn == nil && it.systemstack && it.g != nil && it.top {
 		if err := it.switchToGoroutineStack(); err != nil {
 			it.err = err
@@ -112,8 +114,21 @@ func ppc64leSwitchStack(it *stackIterator, callFrameRegs *op.DwarfRegisters) boo
 	}
 	if it.frame.Current.Fn != nil {
 		switch it.frame.Current.Fn.Name {
-		case "runtime.asmcgocall", "runtime.cgocallback_gofunc", "runtime.sigpanic", "runtime.cgocallback":
+		case "runtime.asmcgocall", "runtime.cgocallback_gofunc", "runtime.cgocallback":
 			//do nothing
+		case "runtime.sigpanic":
+			// In runtime/signal_ppc64x.go, preparePanic subtracts MinFrameSize
+			// (32 bytes) from SP and stores the original LR at the new SP.
+			// sigpanic's CFA points to this saved LR slot. Restore LR from CFA
+			// and the faulting function's SP from CFA+32.
+			lr, err := it.readRegisterAt(regnum.PPC64LE_LR, uint64(it.regs.CFA))
+			if err != nil {
+				it.err = err
+				return false
+			}
+			callFrameRegs.AddReg(regnum.PPC64LE_SP, op.DwarfRegisterFromUint64(uint64(it.regs.CFA)+32))
+			callFrameRegs.AddReg(regnum.PPC64LE_LR, lr)
+			return false
 		case "runtime.goexit", "runtime.rt0_go":
 			// Look for "top of stack" functions.
 			it.atend = true
@@ -141,18 +156,19 @@ func ppc64leSwitchStack(it *stackIterator, callFrameRegs *op.DwarfRegisters) boo
 			// LR is saved into the caller's frame at 16(SP) before the stack
 			// allocation (host ELFv2 ABI).
 			newlr, _ := readUintRaw(it.mem, newsp+16, int64(it.bi.Arch.PtrSize()))
-			if it.regs.Reg(it.regs.BPRegNum) != nil {
-				it.regs.Reg(it.regs.BPRegNum).Uint64Val = newbp
-			} else {
-				reg, _ := it.readRegisterAt(it.regs.BPRegNum, it.regs.SP()+bpoff)
-				it.regs.AddReg(it.regs.BPRegNum, reg)
-			}
+			// Restore saved R31 for C callers whose unwind rules use it.
+			// BPRegNum identifies R1/SP in this register set, not R31.
+			it.regs.AddReg(regnum.PPC64LE_R0+31, op.DwarfRegisterFromUint64(newbp))
 			it.regs.Reg(it.regs.LRRegNum).Uint64Val = newlr
 			it.regs.Reg(it.regs.SPRegNum).Uint64Val = newsp
 			it.pc = newlr
 			return true
 		default:
-			if it.systemstack && it.top && it.g != nil && strings.HasPrefix(it.frame.Current.Fn.Name, "runtime.") && it.frame.Current.Fn.Name != "runtime.fatalthrow" {
+			name := it.frame.Current.Fn.Name
+			// Stay on the system stack for fatal-throw stops.
+			if it.systemstack && it.top && it.g != nil && strings.HasPrefix(name, "runtime.") &&
+				name != "runtime.fatalthrow" && name != "runtime.fatalsignal" &&
+				name != "runtime.throw" && name != "runtime.fatal" {
 				// The runtime switches to the system stack in multiple places.
 				// This usually happens through a call to runtime.systemstack but there
 				// are functions that switch to the system stack manually (for example
@@ -217,9 +233,7 @@ func ppc64leSwitchStack(it *stackIterator, callFrameRegs *op.DwarfRegisters) boo
 		}
 		// entering the system stack
 		callFrameRegs.Reg(callFrameRegs.SPRegNum).Uint64Val = it.g0_sched_sp
-		// reads the previous value of g0.sched.sp that runtime.cgocallback_gofunc saved on the stack
-
-		// TODO: is this save slot correct?
+		// reads the previous value of g0.sched.sp by runtime.cgocallback
 		it.g0_sched_sp, _ = readUintRaw(it.mem, callFrameRegs.SP()+ppc64prevG0schedSPOffsetSaveSlot, int64(it.bi.Arch.PtrSize()))
 		it.systemstack = true
 		return false
