@@ -19,8 +19,9 @@ Tests skipped by each supported backend:
 	* 4 follow exec not implemented on freebsd
 	* 7 not implemented
 	* 2 not working on freebsd
-* linux/386 skipped = 2
-	* 2 not working on linux/386
+* linux/386 skipped = 4
+	* 1 G pointer of Go shared libraries not supported
+	* 3 not working on linux/386
 * linux/386/pie skipped = 1
 	* 1 broken
 * linux/loong64 skipped = 1
@@ -31,10 +32,10 @@ Tests skipped by each supported backend:
 	* 1 broken in linux ppc64le
 * linux/ppc64le/native/pie skipped = 3
 	* 3 broken - pie mode
-* linux/riscv64 skipped = 4
+* linux/riscv64 skipped = 5
 	* 1 broken
 	* 1 not implemented
-	* 2 not working on linux/riscv64
+	* 3 not working on linux/riscv64
 * loong64 skipped = 7
 	* 1 broken - global variable symbolication
 	* 6 not implemented
@@ -47,9 +48,9 @@ Tests skipped by each supported backend:
 * riscv64 skipped = 7
 	* 1 broken - global variable symbolication
 	* 6 not implemented
-* windows skipped = 9
+* windows skipped = 10
 	* 1 broken
-	* 2 not working on windows
+	* 3 not working on windows
 	* 6 see https://github.com/go-delve/delve/issues/2768
 * windows/arm64 skipped = 3
 	* 2 broken - cgo stacktraces

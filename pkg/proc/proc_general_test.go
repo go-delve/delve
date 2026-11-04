@@ -1,12 +1,14 @@
 package proc
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
 	"testing"
 	"unsafe"
 
+	"github.com/go-delve/delve/pkg/logflags"
 	protest "github.com/go-delve/delve/pkg/proc/test"
 )
 
@@ -314,5 +316,69 @@ func TestGenericFunctionNameWithoutParameters(t *testing.T) {
 		if gn := fn.NameWithoutTypeParams(); gn != tc.tgt {
 			t.Errorf("For %q, name without parameters mismatch: %q %q", tc.name, tc.tgt, gn)
 		}
+	}
+}
+
+func TestGoImageIndex(t *testing.T) {
+	newBinaryInfo := func(images ...*Image) *BinaryInfo {
+		bi := &BinaryInfo{logger: logflags.DebuggerLogger()}
+		for i, image := range images {
+			image.index = i
+			bi.Images = append(bi.Images, image)
+			bi.updateGoImageIndex(image)
+		}
+		return bi
+	}
+	assertGoImage := func(t *testing.T, bi *BinaryInfo, want int) {
+		t.Helper()
+		if bi.goImageIndex != want {
+			t.Errorf("expected the Go image to be %d, got %d", want, bi.goImageIndex)
+		}
+	}
+
+	t.Run("Go executable", func(t *testing.T) {
+		bi := newBinaryInfo(
+			&Image{Path: "exe", IsGo: true},
+			&Image{Path: "plugin.so", IsGo: true},
+			&Image{Path: "libgo.so", IsGo: true, cShared: true},
+		)
+		assertGoImage(t, bi, 0)
+	})
+
+	t.Run("Go shared library", func(t *testing.T) {
+		bi := newBinaryInfo(
+			&Image{Path: "exe"},
+			&Image{Path: "libc.so"},
+			&Image{Path: "libgo1.so", IsGo: true, cShared: true},
+			&Image{Path: "libgo2.so", IsGo: true, cShared: true},
+		)
+		assertGoImage(t, bi, 2)
+	})
+
+	t.Run("load error", func(t *testing.T) {
+		failed := &Image{Path: "libgo1.so", IsGo: true, cShared: true, loadErr: errors.New("load error")}
+		bi := newBinaryInfo(&Image{Path: "exe"}, failed)
+		assertGoImage(t, bi, 0)
+
+		// The image is loaded again successfully (LoadImageBinaryInfoAgain).
+		failed.loadErr = nil
+		bi.updateGoImageIndex(failed)
+		assertGoImage(t, bi, 1)
+	})
+}
+
+func TestParseModuleDataAtEndOfSection(t *testing.T) {
+	// The moduledata struct can be close to the end of .noptrdata, closer than
+	// the number of bytes parseModuleData returns.
+	const tableAddr = 0x4a1b2c3d
+	data := make([]byte, 0x100)
+	off := len(data) - 0x20
+	data[off], data[off+1], data[off+2], data[off+3] = 0x3d, 0x2c, 0x1b, 0x4a
+	md, err := parseModuleData(data, tableAddr)
+	if err != nil {
+		t.Fatalf("parseModuleData: %v", err)
+	}
+	if len(md) != 0x20 {
+		t.Errorf("expected the moduledata to extend to the end of the section (%#x bytes), got %#x bytes", 0x20, len(md))
 	}
 }
