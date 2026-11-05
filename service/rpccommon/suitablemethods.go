@@ -29,6 +29,9 @@ func suitableMethods2(s *rpc2.RPCServer, methods map[string]*methodType) {
 	methods["RPCServer.DumpStart"] = &methodType{method: reflect.ValueOf(s.DumpStart)}
 	methods["RPCServer.DumpWait"] = &methodType{method: reflect.ValueOf(s.DumpWait)}
 	methods["RPCServer.Eval"] = &methodType{method: reflect.ValueOf(s.Eval)}
+	methods["RPCServer.EvalStarlark"] = &methodType{method: reflect.ValueOf(s.EvalStarlark)}
+	methods["RPCServer.EvalStarlarkCancel"] = &methodType{method: reflect.ValueOf(s.EvalStarlarkCancel)}
+	methods["RPCServer.EvalStarlarkContinue"] = &methodType{method: reflect.ValueOf(s.EvalStarlarkContinue)}
 	methods["RPCServer.ExamineMemory"] = &methodType{method: reflect.ValueOf(s.ExamineMemory)}
 	methods["RPCServer.FindLocation"] = &methodType{method: reflect.ValueOf(s.FindLocation)}
 	methods["RPCServer.FollowExec"] = &methodType{method: reflect.ValueOf(s.FollowExec)}

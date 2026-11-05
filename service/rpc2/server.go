@@ -25,7 +25,14 @@ type RPCServer struct {
 const eventBufferSize = 100
 
 func NewServer(config *service.Config, debugger *debugger.Debugger) *RPCServer {
-	return &RPCServer{config, debugger, make(chan *proc.Event, eventBufferSize)}
+	builtins, doc := starlarkPredeclare(debugger.StarlarkEnv)
+	debugger.StarlarkEnv.AddToDefaultEnv(builtins, doc)
+
+	return &RPCServer{
+		config:     config,
+		debugger:   debugger,
+		eventsChan: make(chan *proc.Event, eventBufferSize),
+	}
 }
 
 type ProcessPidIn struct {
@@ -1287,4 +1294,66 @@ func (s *RPCServer) TypeInfo(arg TypeInfoIn, out *TypeInfoOut) error {
 	var err error
 	out.TypeInfo, err = s.debugger.TypeInfo(arg.Name)
 	return err
+}
+
+type EvalStarlarkIn struct {
+	ThreadID   uint64
+	Scope      api.EvalScope
+	LoadConfig api.LoadConfig
+	Path       string
+	Script     string
+	Flags      api.EvalStarlarkFlags
+}
+
+// EvalStarlark evaluates a starlark expression.
+//
+// If out.Kind is StarlarkDone then the expression was evaluated and
+// out.Output contains the output.
+// Otherwise to complete the evaluation the client must execute the
+// operation specified by out.Kind and call EvalStarlarkContinue.
+// When a client is done with a starlark thread it should use
+// EvalStarlarkCancel to remove it.
+//
+// Clients that do not wish to implement the EvalStarlarkContinue protocol
+// should use the EvalStarlarkNoninteractive flag.
+func (s *RPCServer) EvalStarlark(arg EvalStarlarkIn, cb service.RPCCallback) {
+	close(cb.SetupDoneChan())
+	s.debugger.EvalStarlark(arg.ThreadID, s, arg.Scope, arg.LoadConfig, arg.Path, arg.Script, arg.Flags, func(out api.EvalStarlarkOut, err error) {
+		cb.Return(out, err)
+	})
+}
+
+type EvalStarlarkContinueIn struct {
+	ThreadID   uint64
+	Value      string
+	Scope      api.EvalScope
+	LoadConfig api.LoadConfig
+	Err        string
+}
+
+// EvalStarlarkContinue continues the evaluation of a starlark expression.
+func (s *RPCServer) EvalStarlarkContinue(arg EvalStarlarkContinueIn, cb service.RPCCallback) {
+	close(cb.SetupDoneChan())
+	s.debugger.EvalStarlarkContinue(arg.ThreadID, arg.Value, arg.Scope, arg.LoadConfig, arg.Err, func(out api.EvalStarlarkOut, err error) {
+		cb.Return(out, err)
+	})
+}
+
+type EvalStarlarkCancelIn struct {
+	ThreadID uint64
+	All      bool
+}
+
+type EvalStarlarkCancelOut struct {
+}
+
+// EvalStarlarkCancel cancels one or all starlark expressions being
+// evaluated and deletes the thread.
+func (s *RPCServer) EvalStarlarkCancel(arg EvalStarlarkCancelIn, out *EvalStarlarkCancelOut) error {
+	if arg.All {
+		s.debugger.EvalStarlarkCancelAll()
+		return nil
+	}
+	s.debugger.EvalStarlarkCancel(arg.ThreadID)
+	return nil
 }
