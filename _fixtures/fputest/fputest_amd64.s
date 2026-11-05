@@ -67,6 +67,8 @@ TEXT ·fputestsetup(SB),$0-50
 	JE done
 	//copy YMM11 to both halves of ZMM12
 	VSHUFF64X2 $0x44, Z11, Z11, Z12
+	//copy ZMM12 to ZMM20 (a Hi16_ZMM register)
+	VSHUFF64X2 $0x44, Z12, Z12, Z20
 
 done:
 	CMPB dobreak+50(FP), $0x0
