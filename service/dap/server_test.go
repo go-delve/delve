@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
@@ -6068,6 +6069,70 @@ func TestExitNonZeroStatus(t *testing.T) {
 	})
 }
 
+func TestNoDebug_DisablesRestartCapability(t *testing.T) {
+	fixture := protest.BuildFixture(t, "increment", protest.AllNonOptimized)
+	for _, mode := range []string{"debug", "exec"} {
+		t.Run(mode, func(t *testing.T) {
+			serverStopped := make(chan struct{})
+			server, forceStop := startDAPServer(t, false, serverStopped)
+			defer func() {
+				close(forceStop)
+				<-serverStopped
+			}()
+			conn, err := net.Dial("tcp", server.config.Listener.Addr().String())
+			if err != nil {
+				t.Fatal(err)
+			}
+			client := daptest.NewClientFromConn(conn)
+			defer client.Close()
+			reader := bufio.NewReader(conn)
+			client.InitializeRequest()
+			message, err := dap.ReadProtocolMessage(reader)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !client.CheckInitializeResponse(t, message).Body.SupportsRestartRequest {
+				t.Fatal("restart should be supported until the launch configuration is known")
+			}
+			program := fixture.Source
+			if mode == "exec" {
+				program = fixture.Path
+			}
+			client.LaunchRequestWithArgs(map[string]any{
+				"noDebug": true, "mode": mode, "program": program,
+			})
+			if mode == "debug" {
+				message, err := dap.ReadProtocolMessage(reader)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if output := client.CheckOutputEvent(t, message).Body.Output; output != "Building "+program+"\n" {
+					t.Errorf("got output %q, want build message for %s", output, program)
+				}
+			}
+
+			// Inspect the wire message: an omitted capability does not disable
+			// the value previously advertised by the initialize response.
+			data, err := dap.ReadBaseMessage(reader)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var event struct {
+				Event string `json:"event"`
+				Body  struct {
+					Capabilities map[string]bool `json:"capabilities"`
+				} `json:"body"`
+			}
+			if err := json.Unmarshal(data, &event); err != nil {
+				t.Fatal(err)
+			}
+			if supported, present := event.Body.Capabilities["supportsRestartRequest"]; event.Event != "capabilities" || !present || supported {
+				t.Errorf("got %s, want a capabilities event with supportsRestartRequest explicitly false", data)
+			}
+		})
+	}
+}
+
 func TestNoDebug_GoodExitStatus(t *testing.T) {
 	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
 		runNoDebugSession(t, client, func() {
@@ -6095,6 +6160,12 @@ func runNoDebugSession(t *testing.T, client *daptest.Client, launchRequest func(
 	client.ExpectInitializeResponseAndCapabilities(t)
 
 	launchRequest()
+	// A build message precedes the capability update in debug/test mode.
+	message := client.ExpectMessage(t)
+	if output, ok := message.(*dap.OutputEvent); ok && strings.HasPrefix(output.Body.Output, "Building") {
+		message = client.ExpectMessage(t)
+	}
+	client.CheckCapabilitiesEvent(t, message)
 	// no initialized event.
 	// noDebug mode applies only to "launch" requests.
 	client.ExpectLaunchResponse(t)
@@ -6117,6 +6188,7 @@ func TestNoDebug_AcceptNoRequestsButDisconnect(t *testing.T) {
 		client.LaunchRequestWithArgs(map[string]any{
 			"noDebug": true, "mode": "exec", "program": fixture.Path,
 		})
+		client.ExpectCapabilitiesEvent(t)
 		client.ExpectLaunchResponse(t)
 
 		// Anything other than disconnect should get rejected

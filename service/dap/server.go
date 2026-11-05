@@ -1287,6 +1287,18 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 			s.sendShowUserErrorResponse(request.Request, FailedToLaunch, "Failed to launch"+whatWeAreLaunching, err.Error())
 			return
 		}
+		// Let clients fall back to stop-and-start for noDebug sessions. Use
+		// an explicit false because dap.Capabilities omits false values,
+		// which would leave the previously advertised capability unchanged.
+		event := &struct {
+			dap.Event
+			Body struct {
+				Capabilities struct {
+					SupportsRestartRequest bool `json:"supportsRestartRequest"`
+				} `json:"capabilities"`
+			} `json:"body"`
+		}{Event: *s.newEvent("capabilities")}
+		s.send(event)
 		// Skip 'initialized' event, which will prevent the client from sending
 		// debug-related requests.
 		s.send(&dap.LaunchResponse{Response: *s.newResponse(request.Request)})
