@@ -1,13 +1,17 @@
 package debugger
 
 import (
+	"bufio"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/go-delve/delve/pkg/gobuild"
 	"github.com/go-delve/delve/pkg/logflags"
@@ -22,6 +26,103 @@ func TestMain(m *testing.M) {
 	flag.Parse()
 	logflags.Setup(logConf != "", logConf, "")
 	protest.RunTestsWithFixtures(m)
+}
+
+func TestDebuggerAttachExecutablePath(t *testing.T) {
+	fixture := protest.BuildFixture(t, "cat", 0)
+	// Use a different path so executable discovery cannot satisfy the test.
+	path := filepath.Join(t.TempDir(), filepath.Base(fixture.Path))
+	data, err := os.ReadFile(fixture.Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, data, 0755); err != nil {
+		t.Fatal(err)
+	}
+	backends := []string{"default"}
+	if runtime.GOOS != "darwin" {
+		// The native backend on macOS requires the optional macnative build tag.
+		backends = append(backends, "native")
+	}
+	for _, backend := range backends {
+		for _, scenario := range []string{"explicit", "missing"} {
+			t.Run(backend+"/"+scenario, func(t *testing.T) {
+				cmd := exec.Command(fixture.Path)
+				stdout, err := cmd.StdoutPipe()
+				if err != nil {
+					t.Fatal(err)
+				}
+				stdin, err := cmd.StdinPipe()
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := cmd.Start(); err != nil {
+					t.Fatal(err)
+				}
+				defer func() {
+					_ = cmd.Process.Kill()
+					_ = cmd.Wait()
+				}()
+
+				output := make(chan string, 1)
+				go func() {
+					defer close(output)
+					scanner := bufio.NewScanner(stdout)
+					for scanner.Scan() {
+						output <- scanner.Text()
+					}
+				}()
+				checkOutput := func(input string) {
+					t.Helper()
+					if _, err := fmt.Fprintln(stdin, input); err != nil {
+						t.Fatal(err)
+					}
+					select {
+					case line := <-output:
+						if want := fmt.Sprintf("read %q", input); line != want {
+							t.Fatalf("target output = %q, want %q", line, want)
+						}
+					case <-time.After(10 * time.Second):
+						t.Fatal("target did not respond")
+					}
+				}
+				// In particular, wait for the Windows loader to finish before attaching.
+				checkOutput("before attach")
+
+				executable := path
+				if scenario == "missing" {
+					executable = filepath.Join(t.TempDir(), "missing-executable")
+				}
+				d := &Debugger{config: &Config{Backend: backend}}
+				group, err := d.Attach(cmd.Process.Pid, executable, nil)
+				if group != nil {
+					defer func() {
+						if err := group.Detach(false); err != nil {
+							t.Error(err)
+						}
+					}()
+				}
+				if scenario == "missing" {
+					var binaryErr *proc.ErrBadBinaryInfo
+					if !errors.As(err, &binaryErr) || !errors.Is(binaryErr.Err, os.ErrNotExist) {
+						t.Fatalf("expected missing executable error, got %v", err)
+					}
+					// This change preserves targets on native attach failure. LLDB's
+					// existing initialization-error cleanup still kills the target.
+					if runtime.GOOS != "darwin" {
+						checkOutput("after failed attach")
+					}
+					return
+				}
+				if err != nil {
+					t.Fatal(err)
+				}
+				if got := group.Selected.BinInfo().Images[0].Path; got != executable {
+					t.Fatalf("executable path = %q, want %q", got, executable)
+				}
+			})
+		}
+	}
 }
 
 func TestDebugger_LaunchNoMain(t *testing.T) {

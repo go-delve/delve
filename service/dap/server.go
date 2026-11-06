@@ -2396,11 +2396,16 @@ func (s *Session) onAttachRequest(request *dap.AttachRequest) {
 			args.Backend = "default"
 		}
 		s.config.Debugger.Backend = args.Backend
+		// New uses the first process argument as the executable path when attaching.
+		var processArgs []string
+		if args.Program != "" {
+			processArgs = []string{args.Program}
+		}
 		var err error
 		func() {
 			s.mu.Lock()
 			defer s.mu.Unlock() // Make sure to unlock in case of panic that will become internal error
-			s.debugger, err = debugger.New(&s.config.Debugger, nil)
+			s.debugger, err = debugger.New(&s.config.Debugger, processArgs)
 		}()
 		if err != nil {
 			s.sendShowUserErrorResponse(request.Request, FailedToAttach, "Failed to attach", err.Error())
