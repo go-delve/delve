@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
@@ -6098,6 +6099,9 @@ func runNoDebugSession(t *testing.T, client *daptest.Client, launchRequest func(
 	// no initialized event.
 	// noDebug mode applies only to "launch" requests.
 	client.ExpectLaunchResponse(t)
+	// Restart is not supported in noDebug mode: the client must
+	// terminate the session and launch again itself.
+	client.ExpectCapabilitiesEventNoRestart(t)
 
 	client.ExpectOutputEventProcessExited(t, exitStatus)
 	ee := client.ExpectExitedEvent(t)
@@ -6118,6 +6122,7 @@ func TestNoDebug_AcceptNoRequestsButDisconnect(t *testing.T) {
 			"noDebug": true, "mode": "exec", "program": fixture.Path,
 		})
 		client.ExpectLaunchResponse(t)
+		client.ExpectCapabilitiesEventNoRestart(t)
 
 		// Anything other than disconnect should get rejected
 		ExpectNoDebugError := func(cmd string) {
@@ -6172,6 +6177,21 @@ func TestNoDebug_AcceptNoRequestsButDisconnect(t *testing.T) {
 			t.Errorf("did not get DisconnectResponse")
 		}
 	})
+}
+
+// The capabilities event sent in a noDebug session must encode
+// supportsRestartRequest as false explicitly: dap.Capabilities omits
+// false-valued fields, and a client that merges the announced
+// capabilities into the ones from the initialize response would keep
+// restart enabled.
+func TestNoDebugCapabilitiesEventMarshal(t *testing.T) {
+	msg, err := json.Marshal(&noDebugCapabilitiesEvent{Event: *new(dap.Event)})
+	if err != nil {
+		t.Fatalf("could not marshal noDebugCapabilitiesEvent: %v", err)
+	}
+	if !strings.Contains(string(msg), `"supportsRestartRequest":false`) {
+		t.Fatalf("got %s, want a body containing \"supportsRestartRequest\":false", msg)
+	}
 }
 
 func TestLaunchRequestWithRelativeBuildPath(t *testing.T) {

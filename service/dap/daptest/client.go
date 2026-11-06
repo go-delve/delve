@@ -141,6 +141,15 @@ func (c *Client) ExpectCapabilitiesEventSupportTerminateDebuggee(t *testing.T) *
 	return e
 }
 
+func (c *Client) ExpectCapabilitiesEventNoRestart(t *testing.T) *dap.CapabilitiesEvent {
+	t.Helper()
+	e := c.ExpectCapabilitiesEvent(t)
+	if e.Body.Capabilities.SupportsRestartRequest {
+		t.Errorf("\ngot %#v\nwant SupportsRestartRequest=false", e.Body.Capabilities.SupportsRestartRequest)
+	}
+	return e
+}
+
 func (c *Client) ExpectOutputEventRegex(t *testing.T, want string) *dap.OutputEvent {
 	t.Helper()
 	e := c.ExpectOutputEvent(t)

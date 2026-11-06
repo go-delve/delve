@@ -280,6 +280,21 @@ type process struct {
 	exited chan struct{}
 }
 
+// noDebugCapabilitiesEvent is a 'capabilities' event announcing that the
+// 'restart' request is not supported in a noDebug session.
+// dap.CapabilitiesEvent cannot express this: dap.Capabilities omits fields
+// with a false value, while a client may merge the capabilities announced in
+// this event into the ones received in the initialize response, so an
+// explicit false is needed to withdraw the advertised capability.
+type noDebugCapabilitiesEvent struct {
+	dap.Event
+	Body struct {
+		Capabilities struct {
+			SupportsRestartRequest bool `json:"supportsRestartRequest"`
+		} `json:"capabilities"`
+	} `json:"body"`
+}
+
 // launchAttachArgs captures arguments from launch/attach request that
 // impact handling of subsequent requests.
 // The fields with cfgName tag can be updated through an evaluation request.
@@ -1290,6 +1305,11 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 		// Skip 'initialized' event, which will prevent the client from sending
 		// debug-related requests.
 		s.send(&dap.LaunchResponse{Response: *s.newResponse(request.Request)})
+
+		// Withdraw the restart capability advertised in the initialize
+		// response: it cannot be handled in a noDebug session, the client
+		// must restart by terminating the session and launching again.
+		s.send(&noDebugCapabilitiesEvent{Event: *s.newEvent("capabilities")})
 
 		// Start the program on a different goroutine, so we can listen for disconnect request.
 		go func() {
