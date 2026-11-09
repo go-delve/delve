@@ -929,13 +929,15 @@ type gLocation struct {
 	kind          gLocationKind
 	tlsOffset     uint64
 	tlsOffsetAddr uint64
+	tlsIndexAddr  uint64 // _tls_index for Windows on go1.28 and later
 }
 
 type gLocationKind uint8
 
 const (
-	gLocationPlain gLocationKind = iota // g struct is located at a static fixed offset in the tls section
-	gLocationPtr                        // g struct is located at a variable offset in the tls section, stored at tlsOffsetAddr
+	gLocationPlain        gLocationKind = iota // g struct is located at a static fixed offset in the tls section
+	gLocationPtr                               // g struct is located at a variable offset in the tls section, stored at tlsOffsetAddr
+	gLocationWindowsGo128                      // g struct is calculated as TEB.ThreadLocalStoragePointer[_tls_index] + runtime.tls_g
 )
 
 // NewBinaryInfo returns an initialized but unloaded BinaryInfo struct.
@@ -2274,9 +2276,9 @@ func loadBinaryInfoPE(bi *BinaryInfo, image *Image, path string, entryPoint uint
 }
 
 func (bi *BinaryInfo) setGStructOffsetPE(entryPoint uint64, peFile *pe.File) {
-	readtls_g := func() uint64 {
+	sym := func(name string) uint64 {
 		for _, s := range peFile.Symbols {
-			if s.Name == "runtime.tls_g" {
+			if s.Name == name {
 				i := int(s.SectionNumber) - 1
 				if 0 <= i && i < len(peFile.Sections) {
 					sect := peFile.Sections[i]
@@ -2289,15 +2291,22 @@ func (bi *BinaryInfo) setGStructOffsetPE(entryPoint uint64, peFile *pe.File) {
 		}
 		return 0
 	}
+
 	switch _PEMachine(peFile.Machine) {
 	case _IMAGE_FILE_MACHINE_AMD64:
 		producer := bi.Producer()
-		if producer != "" && goversion.ProducerAfterOrEqual(producer, 1, 20) {
+		switch {
+		case goversion.ProducerAfterOrEqual(producer, 1, 28):
+			// use _tls_index and runtime.tls_g, see https://go-review.googlesource.com/c/go/+/823664
+			bi.gLocation.tlsOffsetAddr = sym("runtime.tls_g")
+			bi.gLocation.tlsIndexAddr = sym("_tls_index")
+			bi.gLocation.kind = gLocationWindowsGo128
+		case goversion.ProducerAfterOrEqual(producer, 1, 20):
 			// Use runtime.tls_g as pointer to offset from GS to G struct:
 			// https://go.dev/src/runtime/sys_windows_amd64.s
-			bi.gLocation.tlsOffsetAddr = readtls_g()
+			bi.gLocation.tlsOffsetAddr = sym("runtime.tls_g")
 			bi.gLocation.kind = gLocationPtr
-		} else {
+		default:
 			// Use ArbitraryUserPointer (0x28) as pointer to pointer
 			// to G struct per:
 			// https://go.dev/src/runtime/cgo/gcc_windows_amd64.c
@@ -2306,7 +2315,7 @@ func (bi *BinaryInfo) setGStructOffsetPE(entryPoint uint64, peFile *pe.File) {
 	case _IMAGE_FILE_MACHINE_ARM64:
 		// Use runtime.tls_g as pointer to offset from R18 to G struct:
 		// https://go.dev/src/runtime/sys_windows_arm64.s
-		bi.gLocation.tlsOffsetAddr = readtls_g()
+		bi.gLocation.tlsOffsetAddr = sym("runtime.tls_g")
 		bi.gLocation.kind = gLocationPtr
 	}
 }
