@@ -9,12 +9,12 @@ func inlineThis(a int) int {
 
 func initialize(a, b *int) {
 	*a = 3
-	*b = 4
+	*b = f(*a + 1)
 }
 
 func main() {
 	var a, b int
-	initialize(&a, &b)
+	initialize(&a, &b) // here
 	a = inlineThis(a)
 	b = inlineThis(b)
 	fmt.Printf("%d %d\n", a, b)
