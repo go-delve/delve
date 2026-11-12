@@ -111,6 +111,13 @@ func ReadUnitVersions(data []byte) map[dwarf.Offset]uint8 {
 	off := dwarf.Offset(0)
 	for len(data) > 0 {
 		length, dwarf64, version, _ := ReadDwarfLengthVersion(data)
+		lengthSize := 4
+		if dwarf64 {
+			lengthSize = 12
+		}
+		if version == 0 || length > uint64(len(data)-lengthSize) || length < 3 {
+			break
+		}
 
 		data = data[4:]
 		off += 4
@@ -141,6 +148,9 @@ func ReadUnitVersions(data []byte) map[dwarf.Offset]uint8 {
 			}
 		}
 
+		if headerSize == 0 || uint64(headerSize) > length {
+			break
+		}
 		r[off+dwarf.Offset(headerSize)] = version
 
 		data = data[length:] // skip contents
