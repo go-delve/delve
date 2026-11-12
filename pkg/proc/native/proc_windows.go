@@ -340,7 +340,14 @@ const (
 	waitDontHandleExceptions
 )
 
-const _MS_VC_EXCEPTION = 0x406D1388 // part of VisualC protocol to set thread names
+const (
+	_MS_VC_EXCEPTION               = 0x406D1388 // part of VisualC protocol to set thread names
+	_EXCEPTION_ACCESS_VIOLATION    = 0xC0000005
+	_EXCEPTION_IN_PAGE_ERROR       = 0xC0000006
+	_EXCEPTION_ILLEGAL_INSTRUCTION = 0xC000001D
+	// ExceptionInformation[0] value for an execute/DEP fault on ACCESS_VIOLATION.
+	_EXCEPTION_ACCESS_VIOLATION_EXEC = 8
+)
 
 func (procgrp *processGroup) waitForDebugEvent(flags waitForDebugEventFlags) (threadID int, err error) {
 	var debugEvent _DEBUG_EVENT
@@ -468,6 +475,10 @@ func (procgrp *processGroup) waitForDebugEvent(flags waitForDebugEventFlags) (th
 								break
 							}
 						}
+						if !atbp {
+							// Memory does not contain our BRK; the CPU still trapped.
+							logUnhandledException(tid, exception, data, instr)
+						}
 					}
 					if !atbp {
 						thread.setPC(uint64(exception.ExceptionRecord.ExceptionAddress))
@@ -491,6 +502,9 @@ func (procgrp *processGroup) waitForDebugEvent(flags waitForDebugEventFlags) (th
 				// mask it or it might crash the program.
 				continueStatus = _DBG_CONTINUE
 			default:
+				// Will be delivered to the debuggee (e.g. Go's VEH → sigpanic →
+				// throw("fault")). Log while we still have the ExceptionRecord.
+				logUnhandledException(tid, exception, nil, nil)
 				continueStatus = _DBG_EXCEPTION_NOT_HANDLED
 			}
 		case _EXIT_PROCESS_DEBUG_EVENT:
@@ -860,3 +874,47 @@ func killProcess(pid int) error {
 
 	return p.Kill()
 }
+
+// logUnhandledException logs exception details that Delve is about to pass
+// through to the debuggee. Always writes to stderr so it shows up in CI
+// without requiring -log. Optional mem/want describe a BREAKPOINT trap
+// where process memory did not contain our breakpoint instruction.
+func logUnhandledException(tid int, exception *_EXCEPTION_DEBUG_INFO, mem, want []byte) {
+	rec := &exception.ExceptionRecord
+	n := int(rec.NumberParameters)
+	if n > len(rec.ExceptionInformation) {
+		n = len(rec.ExceptionInformation)
+	}
+	infos := make([]string, n)
+	for i := 0; i < n; i++ {
+		infos[i] = fmt.Sprintf("%#x", rec.ExceptionInformation[i])
+	}
+
+	msg := fmt.Sprintf("windows exception tid=%d firstChance=%d code=%#x addr=%#x info=[%s]",
+		tid, exception.FirstChance, rec.ExceptionCode, rec.ExceptionAddress, strings.Join(infos, " "))
+
+	switch rec.ExceptionCode {
+	case _EXCEPTION_ACCESS_VIOLATION, _EXCEPTION_IN_PAGE_ERROR:
+		if n >= 2 {
+			kind := "access"
+			switch rec.ExceptionInformation[0] {
+			case 0:
+				kind = "read"
+			case 1:
+				kind = "write"
+			case _EXCEPTION_ACCESS_VIOLATION_EXEC:
+				kind = "execute"
+			}
+			msg += fmt.Sprintf(" (%s fault va=%#x)", kind, rec.ExceptionInformation[1])
+		}
+	case _EXCEPTION_ILLEGAL_INSTRUCTION:
+		msg += " (illegal instruction)"
+	case _EXCEPTION_BREAKPOINT:
+		msg += fmt.Sprintf(" (breakpoint but mem=%x want=%x)", mem, want)
+	}
+
+	// Always visible in test/CI output; also to the debugger logger when enabled.
+	fmt.Fprintf(os.Stderr, "delve: %s\n", msg)
+	logflags.DebuggerLogger().Errorf("%s", msg)
+}
+
