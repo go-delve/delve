@@ -473,20 +473,52 @@ func getGVariable(thread Thread) (*Variable, error) {
 		return nil, err
 	}
 
+	bi := thread.BinInfo()
+
 	gaddr, hasgaddr := regs.GAddr()
-	if !hasgaddr {
-		bi := thread.BinInfo()
-		offset, err := bi.GStructOffset(thread.ProcessMemory())
-		if err != nil {
-			return nil, err
-		}
-		gaddr, err = readUintRaw(thread.ProcessMemory(), regs.TLS()+offset, int64(bi.Arch.PtrSize()))
-		if err != nil {
-			return nil, err
-		}
+	if hasgaddr {
+		return newGVariable(thread, gaddr, bi.Arch.DerefTLS())
 	}
 
-	return newGVariable(thread, gaddr, thread.BinInfo().Arch.DerefTLS())
+	mem := thread.ProcessMemory()
+	ptrsz := bi.Arch.PtrSize()
+
+	if bi.gLocation.kind == gLocationWindowsGo128 {
+		// Address is calculated as:
+		//   TEB.ThreadLocalStoragePointer[_tls_index] + runtime.tls_g
+		// See https://go-review.googlesource.com/c/go/+/823664
+
+		var dereferr error
+		deref := func(addr uint64, sz int) uint64 {
+			if dereferr != nil {
+				return 0
+			}
+			v, err := readUintRaw(mem, addr, int64(sz))
+			dereferr = err
+			return v
+		}
+
+		tlsIndex := deref(bi.gLocation.tlsIndexAddr, 4)
+		runtimeTlsg := deref(bi.gLocation.tlsOffsetAddr, ptrsz)
+		tlsp := deref(regs.TLS()+0x58, ptrsz) // 0x58 is the offset of ThreadLocalStoragePointer in TEB
+		tls := deref(tlsp+(tlsIndex*uint64(ptrsz)), ptrsz)
+
+		if dereferr != nil {
+			return nil, dereferr
+		}
+
+		return newGVariable(thread, tls+runtimeTlsg, bi.Arch.DerefTLS())
+	}
+
+	offset, err := bi.GStructOffset(mem)
+	if err != nil {
+		return nil, err
+	}
+	gaddr, err = readUintRaw(mem, regs.TLS()+offset, int64(bi.Arch.PtrSize()))
+	if err != nil {
+		return nil, err
+	}
+	return newGVariable(thread, gaddr, bi.Arch.DerefTLS())
 }
 
 func newGVariable(thread Thread, gaddr uint64, deref bool) (*Variable, error) {

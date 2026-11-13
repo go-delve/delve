@@ -100,8 +100,7 @@ type BinaryInfo struct {
 	types       map[string]dwarfRef
 	packageVars []packageVar // packageVars is a list of all global/package variables in debug_info, sorted by address
 
-	gStructOffset      uint64
-	gStructOffsetIsPtr bool
+	gLocation gLocation
 
 	// goImageIndex is the index of the image containing the Go runtime: the
 	// executable for Go programs, otherwise the first Go image loaded (e.g. a
@@ -925,6 +924,22 @@ type ElfDynamicSection struct {
 	Size uint64 // size of the .dynamic section of the executable
 }
 
+// gLocation contains informations about locating the g struct
+type gLocation struct {
+	kind          gLocationKind
+	tlsOffset     uint64
+	tlsOffsetAddr uint64
+	tlsIndexAddr  uint64 // _tls_index for Windows on go1.28 and later
+}
+
+type gLocationKind uint8
+
+const (
+	gLocationPlain        gLocationKind = iota // g struct is located at a static fixed offset in the tls section
+	gLocationPtr                               // g struct is located at a variable offset in the tls section, stored at tlsOffsetAddr
+	gLocationWindowsGo128                      // g struct is calculated as TEB.ThreadLocalStoragePointer[_tls_index] + runtime.tls_g
+)
+
 // NewBinaryInfo returns an initialized but unloaded BinaryInfo struct.
 func NewBinaryInfo(goos, goarch string, attaching bool) *BinaryInfo {
 	r := &BinaryInfo{GOOS: goos, logger: logflags.DebuggerLogger(), attaching: attaching}
@@ -960,16 +975,13 @@ func (bi *BinaryInfo) LoadBinaryInfo(path string, entryPoint uint64, debugInfoDi
 }
 
 func loadBinaryInfo(bi *BinaryInfo, image *Image, path string, entryPoint uint64) error {
-	var wg sync.WaitGroup
-	defer wg.Wait()
-
 	switch bi.GOOS {
 	case "linux", "freebsd":
-		return loadBinaryInfoElf(bi, image, path, entryPoint, &wg)
+		return loadBinaryInfoElf(bi, image, path, entryPoint)
 	case "windows":
-		return loadBinaryInfoPE(bi, image, path, entryPoint, &wg)
+		return loadBinaryInfoPE(bi, image, path, entryPoint)
 	case "darwin":
-		return loadBinaryInfoMacho(bi, image, path, entryPoint, &wg)
+		return loadBinaryInfoMacho(bi, image, path, entryPoint)
 	}
 	return errors.New("unsupported operating system")
 }
@@ -977,23 +989,14 @@ func loadBinaryInfo(bi *BinaryInfo, image *Image, path string, entryPoint uint64
 // GStructOffset returns the offset of the G
 // struct in thread local storage.
 func (bi *BinaryInfo) GStructOffset(mem MemoryReadWriter) (uint64, error) {
-	if goimage := bi.goImage(); goimage.tlsgGOTEntry != 0 {
-		// The Go runtime is in a shared library loaded by a non-Go executable
-		// (tlsgGOTEntry is only set for those): the offset of the G pointer is
-		// stored in its GOT entry, filled by the dynamic linker.
-		return readUintRaw(mem, goimage.tlsgGOTEntry, int64(bi.Arch.PtrSize()))
+	switch bi.gLocation.kind {
+	case gLocationPlain:
+		return bi.gLocation.tlsOffset, nil
+	case gLocationPtr:
+		return readUintRaw(mem, bi.gLocation.tlsOffsetAddr, int64(bi.Arch.PtrSize()))
+	default:
+		return 0, errors.New("g struct does not have offset")
 	}
-	offset := bi.gStructOffset
-	if bi.gStructOffsetIsPtr {
-		// The G struct offset from the TLS section is a pointer
-		// and the address must be dereferenced to find to actual G struct offset.
-		var err error
-		offset, err = readUintRaw(mem, offset, int64(bi.Arch.PtrSize()))
-		if err != nil {
-			return 0, err
-		}
-	}
-	return offset, nil
 }
 
 // LastModified returns the last modified time of the binary.
@@ -1120,11 +1123,6 @@ type Image struct {
 	symTable *gosym.Table
 	Trimpath bool // trimpath used
 	cShared  bool // built with buildmode=c-shared
-
-	// tlsgGOTEntry is the address of the GOT entry holding the offset of the
-	// G pointer (runtime.tlsg) from the thread pointer, for Go shared
-	// libraries on linux/amd64. Zero if not found.
-	tlsgGOTEntry uint64
 
 	// IsGo is true when the image has been confirmed to be a Go binary,
 	// e.g. by checking for a Go producer string in DWARF compile units.
@@ -1831,7 +1829,7 @@ func (bi *BinaryInfo) openSeparateDebugInfo(image *Image, exe *elf.File, debugIn
 }
 
 // loadBinaryInfoElf specifically loads information from an ELF binary.
-func loadBinaryInfoElf(bi *BinaryInfo, image *Image, path string, addr uint64, wg *sync.WaitGroup) error {
+func loadBinaryInfoElf(bi *BinaryInfo, image *Image, path string, addr uint64) error {
 	exe, err := os.OpenFile(path, 0, os.ModePerm)
 	if err != nil {
 		return err
@@ -1916,6 +1914,7 @@ func loadBinaryInfoElf(bi *BinaryInfo, image *Image, path string, addr uint64, w
 	debugLineStrBytes, _ := godwarf.GetDebugSectionElf(dwarfFile, "line_str")
 	image.debugLineStr = debugLineStrBytes
 
+	wg := new(sync.WaitGroup)
 	wg.Add(3)
 	go bi.parseDebugFrameElf(image, dwarfFile, elfFile, debugInfoBytes, wg)
 	go bi.loadDebugInfoMaps(image, debugInfoBytes, debugLineBytes, wg, nil)
@@ -1924,11 +1923,18 @@ func loadBinaryInfoElf(bi *BinaryInfo, image *Image, path string, addr uint64, w
 		// determine g struct offset only when loading the executable file
 		wg.Add(1)
 		go bi.setGStructOffsetElf(image, dwarfFile, wg)
-	} else if elfFile.Machine == elf.EM_X86_64 && !bi.goImage().IsGo {
+	}
+	wg.Wait()
+
+	if image.index != 0 && elfFile.Machine == elf.EM_X86_64 && image.IsGo && !bi.goImage().IsGo {
 		// The Go runtime may be in a shared library loaded by a non-Go executable
 		// (buildmode=c-shared), in which case the G pointer is in the TLS block of
 		// the library, not of the executable.
-		findTLSGGOTEntryElf(image, elfFile)
+		r, ok := findTLSGGOTEntryElf(elfFile)
+		if ok {
+			bi.gLocation.tlsOffsetAddr = image.StaticBase + r
+			bi.gLocation.kind = gLocationPtr
+		}
 	}
 	return nil
 }
@@ -2100,7 +2106,7 @@ func (bi *BinaryInfo) setGStructOffsetElf(image *Image, exe *elf.File, wg *sync.
 	case elf.EM_X86_64, elf.EM_386:
 		tlsg := getSymbol(image, bi.logger, exe, "runtime.tlsg")
 		if tlsg == nil || tls == nil {
-			bi.gStructOffset = ^uint64(bi.Arch.PtrSize()) + 1 //-ptrSize
+			bi.gLocation.tlsOffset = ^uint64(bi.Arch.PtrSize()) + 1 //-ptrSize
 			return
 		}
 
@@ -2112,19 +2118,19 @@ func (bi *BinaryInfo) setGStructOffsetElf(image *Image, exe *elf.File, wg *sync.
 
 		// The TLS register points to the end of the TLS block, which is
 		// tls.Memsz long. runtime.tlsg is an offset from the beginning of that block.
-		bi.gStructOffset = ^(memsz) + 1 + tlsg.Value // -tls.Memsz + tlsg.Value
+		bi.gLocation.tlsOffset = ^(memsz) + 1 + tlsg.Value // -tls.Memsz + tlsg.Value
 
 	case elf.EM_AARCH64:
 		tlsg := getSymbol(image, bi.logger, exe, "runtime.tls_g")
 		if tlsg == nil || tls == nil {
-			bi.gStructOffset = 2 * uint64(bi.Arch.PtrSize())
+			bi.gLocation.tlsOffset = 2 * uint64(bi.Arch.PtrSize())
 			return
 		}
 
-		bi.gStructOffset = tlsg.Value + uint64(bi.Arch.PtrSize()*2) + ((tls.Vaddr - uint64(bi.Arch.PtrSize()*2)) & (tls.Align - 1))
+		bi.gLocation.tlsOffset = tlsg.Value + uint64(bi.Arch.PtrSize()*2) + ((tls.Vaddr - uint64(bi.Arch.PtrSize()*2)) & (tls.Align - 1))
 
 	case elf.EM_PPC64, elf.EM_RISCV, elf.EM_LOONGARCH:
-		_ = getSymbol(image, bi.logger, exe, "runtime.tls_g")
+		// nothing?
 
 	default:
 		// we should never get here
@@ -2142,14 +2148,14 @@ func (bi *BinaryInfo) setGStructOffsetElf(image *Image, exe *elf.File, wg *sync.
 // offset depends on where the library's TLS block was placed at load time, so
 // it can't be computed from the file: the GOT entry is read from the target
 // memory instead (see GStructOffset).
-func findTLSGGOTEntryElf(image *Image, exe *elf.File) {
+func findTLSGGOTEntryElf(exe *elf.File) (uint64, bool) {
 	rela := exe.Section(".rela.dyn")
 	if rela == nil {
-		return
+		return 0, false
 	}
 	data, err := rela.Data()
 	if err != nil {
-		return
+		return 0, false
 	}
 	const relaSize = 24 // sizeof(Elf64_Rela)
 	var (
@@ -2175,7 +2181,7 @@ func findTLSGGOTEntryElf(image *Image, exe *elf.File) {
 				}
 			}
 			if tlsg == nil {
-				return
+				return 0, false
 			}
 			dynsyms, _ = exe.DynamicSymbols()
 		}
@@ -2184,10 +2190,11 @@ func findTLSGGOTEntryElf(image *Image, exe *elf.File) {
 		sym := elf.R_SYM64(info)
 		if (sym == 0 && addend == tlsg.Value) ||
 			(sym > 0 && int(sym) <= len(dynsyms) && dynsyms[sym-1].Name == "runtime.tlsg") {
-			image.tlsgGOTEntry = image.StaticBase + off
-			return
+			return off, true
 		}
 	}
+
+	return 0, false
 }
 
 func getSymbol(image *Image, logger logflags.Logger, exe *elf.File, name string) *elf.Symbol {
@@ -2211,7 +2218,7 @@ func getSymbol(image *Image, logger logflags.Logger, exe *elf.File, name string)
 const _IMAGE_DLLCHARACTERISTICS_DYNAMIC_BASE = 0x0040
 
 // loadBinaryInfoPE specifically loads information from a PE binary.
-func loadBinaryInfoPE(bi *BinaryInfo, image *Image, path string, entryPoint uint64, wg *sync.WaitGroup) error {
+func loadBinaryInfoPE(bi *BinaryInfo, image *Image, path string, entryPoint uint64) error {
 	peFile, closer, err := openExecutablePathPE(path)
 	if err != nil {
 		return err
@@ -2253,6 +2260,8 @@ func loadBinaryInfoPE(bi *BinaryInfo, image *Image, path string, entryPoint uint
 	debugLineStrBytes, _ := godwarf.GetDebugSectionPE(peFile, "line_str")
 	image.debugLineStr = debugLineStrBytes
 
+	wg := new(sync.WaitGroup)
+	defer wg.Wait()
 	wg.Add(2)
 	go bi.parseDebugFramePE(image, peFile, debugInfoBytes, wg)
 	go bi.loadDebugInfoMaps(image, debugInfoBytes, debugLineBytes, wg, func() {
@@ -2267,9 +2276,9 @@ func loadBinaryInfoPE(bi *BinaryInfo, image *Image, path string, entryPoint uint
 }
 
 func (bi *BinaryInfo) setGStructOffsetPE(entryPoint uint64, peFile *pe.File) {
-	readtls_g := func() uint64 {
+	sym := func(name string) uint64 {
 		for _, s := range peFile.Symbols {
-			if s.Name == "runtime.tls_g" {
+			if s.Name == name {
 				i := int(s.SectionNumber) - 1
 				if 0 <= i && i < len(peFile.Sections) {
 					sect := peFile.Sections[i]
@@ -2282,25 +2291,32 @@ func (bi *BinaryInfo) setGStructOffsetPE(entryPoint uint64, peFile *pe.File) {
 		}
 		return 0
 	}
+
 	switch _PEMachine(peFile.Machine) {
 	case _IMAGE_FILE_MACHINE_AMD64:
 		producer := bi.Producer()
-		if producer != "" && goversion.ProducerAfterOrEqual(producer, 1, 20) {
+		switch {
+		case goversion.ProducerAfterOrEqual(producer, 1, 28):
+			// use _tls_index and runtime.tls_g, see https://go-review.googlesource.com/c/go/+/823664
+			bi.gLocation.tlsOffsetAddr = sym("runtime.tls_g")
+			bi.gLocation.tlsIndexAddr = sym("_tls_index")
+			bi.gLocation.kind = gLocationWindowsGo128
+		case goversion.ProducerAfterOrEqual(producer, 1, 20):
 			// Use runtime.tls_g as pointer to offset from GS to G struct:
 			// https://go.dev/src/runtime/sys_windows_amd64.s
-			bi.gStructOffset = readtls_g()
-			bi.gStructOffsetIsPtr = true
-		} else {
+			bi.gLocation.tlsOffsetAddr = sym("runtime.tls_g")
+			bi.gLocation.kind = gLocationPtr
+		default:
 			// Use ArbitraryUserPointer (0x28) as pointer to pointer
 			// to G struct per:
 			// https://go.dev/src/runtime/cgo/gcc_windows_amd64.c
-			bi.gStructOffset = 0x28
+			bi.gLocation.tlsOffsetAddr = 0x28
 		}
 	case _IMAGE_FILE_MACHINE_ARM64:
 		// Use runtime.tls_g as pointer to offset from R18 to G struct:
 		// https://go.dev/src/runtime/sys_windows_arm64.s
-		bi.gStructOffset = readtls_g()
-		bi.gStructOffsetIsPtr = true
+		bi.gLocation.tlsOffsetAddr = sym("runtime.tls_g")
+		bi.gLocation.kind = gLocationPtr
 	}
 }
 
@@ -2327,7 +2343,7 @@ func (bi *BinaryInfo) parseDebugFramePE(image *Image, exe *pe.File, debugInfoByt
 // MACH-O ////////////////////////////////////////////////////////////
 
 // loadBinaryInfoMacho specifically loads information from a Mach-O binary.
-func loadBinaryInfoMacho(bi *BinaryInfo, image *Image, path string, entryPoint uint64, wg *sync.WaitGroup) error {
+func loadBinaryInfoMacho(bi *BinaryInfo, image *Image, path string, entryPoint uint64) error {
 	exe, err := macho.Open(path)
 	if err != nil {
 		return err
@@ -2403,6 +2419,8 @@ func loadBinaryInfoMacho(bi *BinaryInfo, image *Image, path string, entryPoint u
 	debugLineStrBytes, _ := godwarf.GetDebugSectionMacho(dwarfFile, "line_str")
 	image.debugLineStr = debugLineStrBytes
 
+	wg := new(sync.WaitGroup)
+	defer wg.Wait()
 	wg.Add(2)
 	go bi.parseDebugFrameMacho(image, dwarfFile, exe, debugInfoBytes, wg)
 	go bi.loadDebugInfoMaps(image, debugInfoBytes, debugLineBytes, wg, bi.setGStructOffsetMacho)
@@ -2446,10 +2464,10 @@ func (bi *BinaryInfo) setGStructOffsetMacho() {
 	// and go commit b3a854c733257c5249c3435ffcee194f8439676a
 	producer := bi.Producer()
 	if producer != "" && goversion.ProducerAfterOrEqual(producer, 1, 11) {
-		bi.gStructOffset = 0x30
+		bi.gLocation.tlsOffset = 0x30
 		return
 	}
-	bi.gStructOffset = 0x8a0
+	bi.gLocation.tlsOffset = 0x8a0
 }
 
 func (bi *BinaryInfo) parseDebugFrameMacho(image *Image, dwarfFile, exe *macho.File, debugInfoBytes []byte, wg *sync.WaitGroup) {
