@@ -57,9 +57,6 @@ const logCommandOutput = false
 func (ft *FakeTerminal) Exec(cmdstr string) (outstr string, err error) {
 	var buf bytes.Buffer
 	ft.Term.stdout.pw.w = &buf
-	if ft.Term.starlarkEnv != nil {
-		ft.Term.starlarkEnv.Redirect(ft.Term.stdout)
-	}
 	err = ft.cmds.Call(cmdstr, ft.Term)
 	outstr = buf.String()
 	if logCommandOutput {
@@ -72,8 +69,7 @@ func (ft *FakeTerminal) Exec(cmdstr string) (outstr string, err error) {
 func (ft *FakeTerminal) ExecStarlark(starlarkProgram string) (outstr string, err error) {
 	var buf bytes.Buffer
 	ft.Term.stdout.pw.w = &buf
-	ft.Term.starlarkEnv.Redirect(ft.Term.stdout)
-	_, err = ft.Term.starlarkEnv.Execute("<stdin>", starlarkProgram, "main", nil)
+	_, _, err = starlarkEvalOne(0, ft.Term, ft.cmds, api.StarlarkStdin, starlarkProgram, 0)
 	outstr = buf.String()
 	if logCommandOutput {
 		ft.t.Logf("command %q -> %q", starlarkProgram, outstr)
