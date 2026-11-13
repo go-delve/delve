@@ -2398,8 +2398,8 @@ func (s *Session) onAttachRequest(request *dap.AttachRequest) {
 		s.config.Debugger.Backend = args.Backend
 		// New uses the first process argument as the executable path when attaching.
 		var processArgs []string
-		if args.Program != "" {
-			processArgs = []string{args.Program}
+		if args.Executable != "" {
+			processArgs = []string{args.Executable}
 		}
 		var err error
 		func() {
