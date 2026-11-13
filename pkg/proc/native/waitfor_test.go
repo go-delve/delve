@@ -49,6 +49,8 @@ func TestWaitForSearchPastSeenProcess(t *testing.T) {
 		_ = cmd.Wait()
 	})
 
+	time.Sleep(10 * time.Millisecond)
+
 	pid, err = waitForSearchProcess(strings.Join(cmd.Args, " "), seen)
 	if err != nil {
 		t.Fatal(err)
