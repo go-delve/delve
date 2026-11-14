@@ -47,7 +47,7 @@ In addition to the general [DAP spec](https://microsoft.github.io/debug-adapter-
 <tr>
     <td>replay<td>traceDirPath         <td>dlvCwd<td>env<td>       <td>    <td>   <td>          <td>      <td>       </tr>
 <tr><td rowspan=2>attach<br><a href="https://pkg.go.dev/github.com/go-delve/delve/service/dap#AttachConfig">godoc</a>
-    <td>local<td>processId             <td>      <td>   <td>backend<td>   <td>    <td>          <td>      <td>        </tr>
+    <td>local<td>processId<br>executable<td>      <td>   <td>backend<td>   <td>    <td>          <td>      <td>        </tr>
 <tr>
     <td>remote<td>                     <td>      <td>   <td>       <td>   <td>    <td>          <td>      <td>        </tr>
 </table>

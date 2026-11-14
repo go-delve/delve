@@ -6466,6 +6466,42 @@ func TestLaunchRequestWithEnv(t *testing.T) {
 	}
 }
 
+func TestAttachRequestWithInvalidExecutable(t *testing.T) {
+	runTest(t, "loopprog", func(client *daptest.Client, fixture protest.Fixture) {
+		cmd := execFixture(t, fixture)
+		defer func() {
+			_ = cmd.Process.Kill()
+			_ = cmd.Wait()
+		}()
+		executable := filepath.Join(t.TempDir(), "missing-executable")
+		client.InitializeRequest()
+		client.ExpectInitializeResponseAndCapabilities(t)
+		client.AttachRequest(map[string]any{
+			"mode": "local", "processId": cmd.Process.Pid, "executable": executable,
+			"stopOnEntry": true,
+		})
+		// Check the first response without blocking on an error if the override
+		// is ignored and the attach unexpectedly succeeds.
+		msg := client.ExpectMessage(t)
+		if response, ok := msg.(*dap.ErrorResponse); ok {
+			if !checkErrorMessageId(response.Body.Error, FailedToAttach) ||
+				!strings.Contains(response.Body.Error.Format, executable) {
+				t.Errorf("expected attach error naming %q, got %q", executable, response.Body.Error.Format)
+			}
+			client.DisconnectRequest()
+			client.ExpectDisconnectResponse(t)
+		} else {
+			t.Errorf("expected explicit missing executable to fail attach, got %T", msg)
+			client.ExpectInitializedEvent(t)
+			client.ExpectAttachResponse(t)
+			client.DisconnectRequestWithKillOption(true)
+			client.ExpectOutputEvent(t)
+			client.ExpectDisconnectResponse(t)
+			client.ExpectTerminatedEvent(t)
+		}
+	})
+}
+
 func TestAttachRequest(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("test skipped on Windows, see https://delve.teamcity.com/project/Delve_windows for details")
@@ -6473,6 +6509,10 @@ func TestAttachRequest(t *testing.T) {
 	runTest(t, "loopprog", func(client *daptest.Client, fixture protest.Fixture) {
 		// Start the program to attach to
 		cmd := execFixture(t, fixture)
+		defer func() {
+			_ = cmd.Process.Kill()
+			_ = cmd.Wait()
+		}()
 
 		runDebugSessionWithBPs(t, client, "attach",
 			// Attach

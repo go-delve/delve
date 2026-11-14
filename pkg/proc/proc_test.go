@@ -2721,7 +2721,7 @@ func TestAttachDetach(t *testing.T) {
 
 	switch testBackend {
 	case "native":
-		p, err = native.Attach(cmd.Process.Pid, nil, []string{})
+		p, err = native.Attach(cmd.Process.Pid, "", nil, []string{})
 	case "lldb":
 		path := ""
 		if runtime.GOOS == "darwin" {
@@ -5851,7 +5851,7 @@ func TestWaitForAttach(t *testing.T) {
 
 	switch testBackend {
 	case "native":
-		p, err = native.Attach(0, fixtureState.waitFor, []string{})
+		p, err = native.Attach(0, "", fixtureState.waitFor, []string{})
 	case "lldb":
 		path := ""
 		if runtime.GOOS == "darwin" {
@@ -6446,7 +6446,7 @@ func TestNonGoBinaryWithGoDlopenAttach(t *testing.T) {
 		t.Fatalf("fixture did not start: %q %v", scan.Text(), scan.Err())
 	}
 
-	grp, err := native.Attach(cmd.Process.Pid, nil, []string{})
+	grp, err := native.Attach(cmd.Process.Pid, "", nil, []string{})
 	assertNoError(err, t, "Attach")
 	defer grp.Detach(false)
 
