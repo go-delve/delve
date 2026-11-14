@@ -6446,7 +6446,7 @@ func TestNonGoBinaryWithGoDlopenAttach(t *testing.T) {
 		t.Fatalf("fixture did not start: %q %v", scan.Text(), scan.Err())
 	}
 
-	grp, err := native.Attach(cmd.Process.Pid, nil, []string{})
+	grp, err := native.Attach(cmd.Process.Pid, "", nil, []string{})
 	assertNoError(err, t, "Attach")
 	defer grp.Detach(false)
 
