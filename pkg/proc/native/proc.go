@@ -249,6 +249,10 @@ func (procgrp *processGroup) procForPid(pid int) *nativeProcess {
 
 func (procgrp *processGroup) add(p *nativeProcess, pid int, currentThread proc.Thread, path string, stopReason proc.StopReason, cmdline string) (*proc.Target, error) {
 	tgt, err := procgrp.addTarget(p, pid, currentThread, path, stopReason, cmdline)
+	if err != nil && len(procgrp.procs) == 0 {
+		// Launch and Attach handle cleanup of the initial process themselves.
+		return nil, err
+	}
 	if tgt == nil {
 		i := len(procgrp.procs)
 		procgrp.procs = append(procgrp.procs, p)

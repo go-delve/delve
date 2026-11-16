@@ -1,6 +1,7 @@
 package service_test
 
 import (
+	"bufio"
 	"flag"
 	"fmt"
 	"math/rand"
@@ -126,6 +127,110 @@ func TestRunWithInvalidPath(t *testing.T) {
 	})
 	if err := server.Run(); err == nil {
 		t.Fatal("Expected Run to return error for invalid program path")
+	}
+}
+
+func TestAttachExecutablePath(t *testing.T) {
+	if testBackend == "rr" {
+		t.Skip("rr does not support attaching")
+	}
+	var buildFlags protest.BuildFlags
+	if buildMode == "pie" {
+		buildFlags |= protest.BuildModePIE
+	}
+	fixture := protest.BuildFixture(t, "cat", buildFlags)
+	// Use a different path so executable discovery cannot satisfy the test.
+	path := filepath.Join(t.TempDir(), filepath.Base(fixture.Path))
+	data, err := os.ReadFile(fixture.Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, data, 0755); err != nil {
+		t.Fatal(err)
+	}
+	for _, scenario := range []string{"explicit", "missing"} {
+		t.Run(scenario, func(t *testing.T) {
+			cmd := exec.Command(fixture.Path)
+			stdout, err := cmd.StdoutPipe()
+			if err != nil {
+				t.Fatal(err)
+			}
+			stdin, err := cmd.StdinPipe()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := cmd.Start(); err != nil {
+				t.Fatal(err)
+			}
+			defer func() {
+				_ = cmd.Process.Kill()
+				_ = cmd.Wait()
+			}()
+
+			output := make(chan string, 1)
+			go func() {
+				defer close(output)
+				scanner := bufio.NewScanner(stdout)
+				for scanner.Scan() {
+					output <- scanner.Text()
+				}
+			}()
+			checkOutput := func(input string) {
+				t.Helper()
+				if _, err := fmt.Fprintln(stdin, input); err != nil {
+					t.Fatal(err)
+				}
+				select {
+				case line := <-output:
+					if want := fmt.Sprintf("read %q", input); line != want {
+						t.Fatalf("target output = %q, want %q", line, want)
+					}
+				case <-time.After(10 * time.Second):
+					t.Fatal("target did not respond")
+				}
+			}
+			// In particular, wait for the Windows loader to finish before attaching.
+			checkOutput("before attach")
+
+			executable := path
+			if scenario == "missing" {
+				executable = filepath.Join(t.TempDir(), "missing-executable")
+			}
+			listener, clientConn := service.ListenerPipe()
+			defer listener.Close()
+			defer clientConn.Close()
+			server := rpccommon.NewServer(&service.Config{
+				Listener:    listener,
+				ProcessArgs: []string{executable},
+				APIVersion:  2,
+				Debugger: debugger.Config{
+					AttachPid: cmd.Process.Pid,
+					Backend:   testBackend,
+				},
+			})
+			err = server.Run()
+			if err == nil {
+				defer server.Stop()
+			}
+			if scenario == "missing" {
+				if err == nil || !strings.Contains(err.Error(), executable) {
+					t.Fatalf("expected missing executable error naming %q, got %v", executable, err)
+				}
+				// Native attach failure must leave the target running. LLDB's
+				// existing initialization-error cleanup still kills the target.
+				if testBackend == "native" {
+					checkOutput("after failed attach")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			client := rpc2.NewClientFromConn(clientConn)
+			// Exercise symbol loading through RPC, not just server initialization.
+			_, err = client.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.main"})
+			assertNoError(err, t, "CreateBreakpoint")
+		})
 	}
 }
 

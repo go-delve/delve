@@ -374,14 +374,14 @@ func (d *Debugger) recordingRun(run func() (string, error)) (*proc.TargetGroup, 
 func (d *Debugger) Attach(pid int, path string, waitFor *proc.WaitFor) (*proc.TargetGroup, error) {
 	switch d.config.Backend {
 	case "native":
-		return native.Attach(pid, waitFor, d.config.DebugInfoDirectories)
+		return native.Attach(pid, path, waitFor, d.config.DebugInfoDirectories)
 	case "lldb":
 		return betterGdbserialLaunchError(gdbserial.LLDBAttach(pid, path, waitFor, d.config.DebugInfoDirectories))
 	case "default":
 		if runtime.GOOS == "darwin" {
 			return betterGdbserialLaunchError(gdbserial.LLDBAttach(pid, path, waitFor, d.config.DebugInfoDirectories))
 		}
-		return native.Attach(pid, waitFor, d.config.DebugInfoDirectories)
+		return native.Attach(pid, path, waitFor, d.config.DebugInfoDirectories)
 	default:
 		return nil, fmt.Errorf("unknown backend %q", d.config.Backend)
 	}
