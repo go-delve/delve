@@ -93,6 +93,10 @@ type functionCallState struct {
 	// undoInjection is set after evalop.CallInjectionSetTarget runs and cleared by evalCallInjectionComplete
 	// it contains information on how to undo a function call injection without running it
 	undoInjection *undoInjection
+	// targetSet is true after CallInjectionSetTarget runs. Unlike undoInjection it
+	// is not cleared by CallInjectionComplete, so RestoreRegisters can tell whether
+	// the target was ever configured.
+	targetSet bool
 
 	// hasDebugPinner is true if the target has runtime.debugPinner
 	hasDebugPinner bool
@@ -807,6 +811,20 @@ const (
 	debugCallRegRestoreRegisters = 16
 )
 
+// checkCallInjectionReadyToFinish records an error if the call injection
+// protocol is finishing without CallInjectionSetTarget having run.
+// Precheck failures never reach SetTarget but already set fncall.err, so
+// those are left alone.
+func checkCallInjectionReadyToFinish(fncall *functionCallState) {
+	if !fncall.targetSet && fncall.err == nil {
+		fncall.err = errors.New("call injection terminated before target was set")
+	}
+}
+
+func unknownProtocolRegisterError(regval uint64) error {
+	return fmt.Errorf("unknown value of protocol register %#x", regval)
+}
+
 // funcCallStep executes one step of the function call injection protocol.
 func funcCallStep(callScope *EvalScope, stack *evalStack, thread Thread) bool {
 	p := callScope.callCtx.p
@@ -858,6 +876,7 @@ func funcCallStep(callScope *EvalScope, stack *evalStack, thread Thread) bool {
 	case debugCallRegRestoreRegisters: // 16
 		// runtime requests that we restore the registers (all except pc and sp),
 		// this is also the last step of the function call protocol.
+		checkCallInjectionReadyToFinish(fncall)
 		pc, sp := regs.PC(), regs.SP()
 		if err := thread.RestoreRegisters(fncall.savedRegs); err != nil {
 			fncall.err = fmt.Errorf("could not restore registers: %v", err)
@@ -957,10 +976,12 @@ func funcCallStep(callScope *EvalScope, stack *evalStack, thread Thread) bool {
 		fncall.panicvar.Name = "~panic"
 
 	default:
-		// Got an unknown protocol register value, this is probably bad but the safest thing
-		// possible is to ignore it and hope it didn't matter.
+		// Unknown protocol register value: do not continue blindly. Continuing
+		// without SetTarget can finish the call and then panic in
+		// evalCallInjectionSetTarget (see issues #4085, #4363).
+		fncall.err = unknownProtocolRegisterError(regval)
 		stack.callInjectionContinue = true
-		fncallLog("unknown value of protocol register %#x", regval)
+		fncallLog("%v", fncall.err)
 	}
 
 	return false
@@ -987,6 +1008,10 @@ func callInjectionComplete2(callScope *EvalScope, bi *BinaryInfo, fncall *functi
 }
 
 func (scope *EvalScope) evalCallInjectionSetTarget(op *evalop.CallInjectionSetTarget, stack *evalStack, thread Thread) {
+	if len(stack.fncalls) == 0 {
+		stack.err = errors.New("CallInjectionSetTarget without active call injection")
+		return
+	}
 	fncall := stack.fncallPeek()
 	if !fncall.hasDebugPinner && (fncall.fn == nil || fncall.receiver != nil || fncall.closureAddr != 0) {
 		stack.err = funcCallEvalFuncExpr(scope, stack, fncall)
@@ -1016,6 +1041,7 @@ func (scope *EvalScope) evalCallInjectionSetTarget(op *evalop.CallInjectionSetTa
 	callOP(scope.BinInfo, thread, regs, fncall.fn.Entry)
 
 	fncall.undoInjection = undo
+	fncall.targetSet = true
 
 	if fncall.receiver != nil {
 		err := funcCallCopyOneArg(scope, fncall, fncall.receiver, &fncall.formalArgs[0], thread)
