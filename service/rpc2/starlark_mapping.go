@@ -22,7 +22,7 @@ func (*starlarkRPCCallback) DisconnectChan() chan struct{} {
 }
 
 func (*starlarkRPCCallback) SetupDoneChan() chan struct{} {
-	return nil
+	return make(chan struct{})
 }
 
 func (cb *starlarkRPCCallback) Return(out any, err error) {

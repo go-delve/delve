@@ -1,9 +1,13 @@
 package terminal
 
 import (
+	"bytes"
 	"fmt"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/go-delve/delve/service/api"
 )
 
 func TestStarlarkExamples(t *testing.T) {
@@ -305,5 +309,71 @@ func TestStarlarkChainBreakpointsExample(t *testing.T) {
 		listIsAt(t, term, "frame 1 list", 28, -1, -1)
 
 		assertPhysCount(0, 0, 1)
+	})
+}
+
+func TestStarlarkRedefineCommand(t *testing.T) {
+	withTestTerminal("testvariables2", t, func(term *FakeTerminal) {
+		term.MustExec("source " + findStarFile("redefine_command1"))
+		out := term.MustExec("redefined_cmd")
+		t.Logf("redefined_cmd (1): %q", out)
+		if out != "first definition\n" {
+			t.Fatalf("output mismatch after first source: %q", out)
+		}
+
+		term.MustExec("source " + findStarFile("redefine_command2"))
+		out = term.MustExec("redefined_cmd")
+		t.Logf("redefined_cmd (2): %q", out)
+		if out != "second definition\n" {
+			t.Fatalf("output mismatch after second source: %q", out)
+		}
+	})
+}
+
+func TestStarlarkReplCancel(t *testing.T) {
+	withTestTerminal("testvariables2", t, func(term *FakeTerminal) {
+		term.MustExec("source " + findStarFile("cancel_test"))
+
+		// Start a thread, like starlarkRepl does.
+		threadID, _, err := starlarkEvalOne(0, term.Term, term.cmds, api.StarlarkStdin, "", api.EvalStarlarkReset)
+		if err != nil {
+			t.Fatalf("could not start starlark thread: %v", err)
+		}
+		defer term.client.EvalStarlarkCancel(threadID, false)
+
+		var buf bytes.Buffer
+		term.Term.stdout.pw.w = &buf
+
+		type evalResult struct {
+			isCancelled bool
+			err         error
+		}
+		done := make(chan evalResult, 1)
+		go func() {
+			_, isCancelled, err := starlarkEvalOne(threadID, term.Term, term.cmds, api.StarlarkStdin, "Waiting()", 0)
+			done <- evalResult{isCancelled, err}
+		}()
+
+		// Give Waiting() time to start running, then cancel it.
+		time.Sleep(time.Second)
+		if err := term.client.EvalStarlarkCancel(threadID, false); err != nil {
+			t.Fatalf("EvalStarlarkCancel: %v", err)
+		}
+
+		// Waiting() runs for 10s, cancellation must return well before that.
+		var res evalResult
+		select {
+		case res = <-done:
+		case <-time.After(5 * time.Second):
+			t.Fatal("starlarkEvalOne did not return after EvalStarlarkCancel")
+		}
+		t.Logf("starlarkEvalOne returned isCancelled=%v err=%v output=%q", res.isCancelled, res.err, buf.String())
+
+		if !res.isCancelled {
+			t.Errorf("expected isCancelled to be true")
+		}
+		if res.err == nil || !strings.Contains(res.err.Error(), "cancelled") {
+			t.Errorf("expected cancellation error, got %v", res.err)
+		}
 	})
 }

@@ -500,7 +500,7 @@ func sigtrampContextLinuxPPC64LE(mem MemoryReader, addr uint64) (*op.DwarfRegist
 	}
 
 	type vreg struct {
-		u [4]uint32
+		u [4]uint32 //lint:ignore U1000 copied definitions
 	}
 
 	type stackt struct {

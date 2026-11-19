@@ -42,25 +42,29 @@ var defaultSyntaxFileOpts = &syntax.FileOptions{
 	Recursion:       true,
 }
 
-type EvalStarlarkRespFunc func(out api.EvalStarlarkOut, err error)
+type EvalStarlarkRespFunc func(out api.EvalStarlarkOut)
 
 func (d *Debugger) EvalStarlark(threadID uint64, s any, scope api.EvalScope, loadConfig api.LoadConfig, path, script string, flags api.EvalStarlarkFlags, resp EvalStarlarkRespFunc) {
+	d.StarlarkEnv.starlarkEvalMu.Lock()
+	defer d.StarlarkEnv.starlarkEvalMu.Unlock()
 	thread, err := d.evalStarlarkSetup(threadID, s, scope, loadConfig, resp, flags, true)
 	if err != nil {
-		resp(api.EvalStarlarkOut{}, err)
+		resp(api.EvalStarlarkOut{Err: err.Error()})
 		return
 	}
 	d.StarlarkEnv.execute(thread, path, script, flags&api.EvalStarlarkCallCommand != 0)
 }
 
 func (d *Debugger) EvalStarlarkContinue(threadID uint64, value string, scope api.EvalScope, loadConfig api.LoadConfig, errIn string, resp EvalStarlarkRespFunc) {
+	d.StarlarkEnv.starlarkEvalMu.Lock()
 	thread, err := d.evalStarlarkSetup(threadID, nil, scope, loadConfig, resp, 0, false)
+	d.StarlarkEnv.starlarkEvalMu.Unlock()
 	if err != nil {
-		resp(api.EvalStarlarkOut{}, err)
+		resp(api.EvalStarlarkOut{Err: err.Error()})
 		return
 	}
 	if thread.cont == nil {
-		resp(api.EvalStarlarkOut{}, errors.New("continue of a non-interactive thread"))
+		resp(api.EvalStarlarkOut{Err: "continue of a non-interactive thread"})
 		return
 	}
 	select {
@@ -120,6 +124,8 @@ type StarlarkEnv struct {
 
 	scope      api.EvalScope
 	loadConfig api.LoadConfig
+
+	starlarkEvalMu sync.Mutex // serializes starlark evaluation calls
 }
 
 type starlarkCommand struct {
@@ -405,9 +411,6 @@ func (env *StarlarkEnv) execute(thread *starlarkThread, path, source string, cal
 			if strings.HasPrefix(name, commandPrefix) {
 				val := env.env[name]
 				name = name[len(commandPrefix):]
-				if _, ok := env.commands[name]; ok {
-					continue
-				}
 				env.createCommand(thread, name, val)
 			}
 		}
@@ -544,6 +547,9 @@ func (env *StarlarkEnv) respondFull(thread *starlarkThread, kind api.StarlarkOut
 	r.Kind = kind
 	r.Output = outstr
 	r.Args = args
+	if err != nil {
+		r.Err = err.Error()
+	}
 	resp := thread.resp
 	thread.resp = nil
 	if resp == nil {
@@ -551,7 +557,7 @@ func (env *StarlarkEnv) respondFull(thread *starlarkThread, kind api.StarlarkOut
 		// arrived, there is nobody to respond to.
 		return
 	}
-	resp(r, err)
+	resp(r)
 	if kind == api.StarlarkDone && thread.cont == nil {
 		// Non-interactive threads can't be continued so delete them here as soon as they are done.
 		env.threadsMu.Lock()
@@ -574,12 +580,29 @@ func (env *StarlarkEnv) clientRoundTrip(thread *starlarkThread, cmdName string, 
 	default:
 	}
 
-	env.respondFull(thread, kind, args, output, nil)
+	env.starlarkEvalMu.Unlock() // allow the client to start other starlark threads
+	var respondErr error
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				logflags.Bug.Inc()
+				respondErr = fmt.Errorf("error responding to client: %v", r)
+			}
+		}()
+		env.respondFull(thread, kind, args, output, nil)
+	}()
+
+	if respondErr != nil {
+		env.starlarkEvalMu.Lock()
+		return &starlarkCont{errstr: respondErr.Error()}
+	}
 
 	select {
 	case c := <-thread.cont:
+		env.starlarkEvalMu.Lock()
 		return c
 	case <-thread.ctx.Done():
+		env.starlarkEvalMu.Lock()
 		return &starlarkCont{errstr: "thread cancelled"}
 	}
 }

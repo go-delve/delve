@@ -1318,8 +1318,8 @@ type EvalStarlarkIn struct {
 // should use the EvalStarlarkNoninteractive flag.
 func (s *RPCServer) EvalStarlark(arg EvalStarlarkIn, cb service.RPCCallback) {
 	close(cb.SetupDoneChan())
-	s.debugger.EvalStarlark(arg.ThreadID, s, arg.Scope, arg.LoadConfig, arg.Path, arg.Script, arg.Flags, func(out api.EvalStarlarkOut, err error) {
-		cb.Return(out, err)
+	s.debugger.EvalStarlark(arg.ThreadID, s, arg.Scope, arg.LoadConfig, arg.Path, arg.Script, arg.Flags, func(out api.EvalStarlarkOut) {
+		cb.Return(out, nil)
 	})
 }
 
@@ -1334,8 +1334,8 @@ type EvalStarlarkContinueIn struct {
 // EvalStarlarkContinue continues the evaluation of a starlark expression.
 func (s *RPCServer) EvalStarlarkContinue(arg EvalStarlarkContinueIn, cb service.RPCCallback) {
 	close(cb.SetupDoneChan())
-	s.debugger.EvalStarlarkContinue(arg.ThreadID, arg.Value, arg.Scope, arg.LoadConfig, arg.Err, func(out api.EvalStarlarkOut, err error) {
-		cb.Return(out, err)
+	s.debugger.EvalStarlarkContinue(arg.ThreadID, arg.Value, arg.Scope, arg.LoadConfig, arg.Err, func(out api.EvalStarlarkOut) {
+		cb.Return(out, nil)
 	})
 }
 

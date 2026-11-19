@@ -3,6 +3,7 @@ package rpc2
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net"
@@ -737,7 +738,7 @@ func (c *RPCClient) EvalStarlark(threadID uint64, scope api.EvalScope, loadConfi
 		Script:     script,
 		Flags:      flags,
 	}, out)
-	return out, err
+	return out, evalStarlarkErr(out, err)
 }
 
 func (c *RPCClient) EvalStarlarkContinue(threadID uint64, value string, scope api.EvalScope, loadConfig api.LoadConfig, errIn error) (*api.EvalStarlarkOut, error) {
@@ -753,7 +754,20 @@ func (c *RPCClient) EvalStarlarkContinue(threadID uint64, value string, scope ap
 		LoadConfig: loadConfig,
 		Err:        errInStr,
 	}, out)
-	return out, errOut
+	return out, evalStarlarkErr(out, errOut)
+}
+
+// evalStarlarkErr returns the error of an EvalStarlark or
+// EvalStarlarkContinue call: either the RPC error or the evaluation error
+// reported in out.Err.
+func evalStarlarkErr(out *api.EvalStarlarkOut, rpcErr error) error {
+	if rpcErr != nil {
+		return rpcErr
+	}
+	if out.Err != "" {
+		return errors.New(out.Err)
+	}
+	return nil
 }
 
 func (c *RPCClient) EvalStarlarkCancel(threadID uint64, all bool) error {

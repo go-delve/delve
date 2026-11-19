@@ -1,7 +1,9 @@
 package debugger
 
 import (
+	"errors"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/go-delve/delve/service/api"
@@ -18,7 +20,11 @@ func newStarlarkTestDebugger() (*Debugger, chan starlarkTestResp, EvalStarlarkRe
 	d := &Debugger{}
 	d.StarlarkEnv = starlarkEnvNew(d)
 	resps := make(chan starlarkTestResp, 10)
-	respFn := func(out api.EvalStarlarkOut, err error) {
+	respFn := func(out api.EvalStarlarkOut) {
+		var err error
+		if out.Err != "" {
+			err = errors.New(out.Err)
+		}
 		resps <- starlarkTestResp{out, err}
 	}
 	return d, resps, respFn
@@ -104,7 +110,7 @@ func TestEvalStarlarkCancelAll_ConcurrentWithEval_NoRace(t *testing.T) {
 	go func() {
 		defer close(done)
 		for range 50 {
-			d.EvalStarlark(0, nil, starlarkTestScope, api.LoadConfig{}, api.StarlarkStdin, "1+1", 0, func(api.EvalStarlarkOut, error) {})
+			d.EvalStarlark(0, nil, starlarkTestScope, api.LoadConfig{}, api.StarlarkStdin, "1+1", 0, func(api.EvalStarlarkOut) {})
 		}
 	}()
 	for range 50 {
@@ -153,4 +159,39 @@ func TestEvalStarlarkNoninteractive_InteractiveThread_Rejected(t *testing.T) {
 	if r.err == nil {
 		t.Fatalf("expected error, got: %#v %v", r.out, r.err)
 	}
+}
+
+func TestEvalStarlarkConcurrentEnvironment(t *testing.T) {
+	d := &Debugger{}
+	d.StarlarkEnv = starlarkEnvNew(d)
+
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+
+	for range 2 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+
+			for range 100 {
+				d.EvalStarlark(
+					0, nil,
+					api.EvalScope{GoroutineID: -1},
+					api.LoadConfig{},
+					api.StarlarkStdin,
+					"x = 1",
+					api.EvalStarlarkReset|api.EvalStarlarkNoninteractive,
+					func(out api.EvalStarlarkOut) {
+						if out.Err != "" {
+							t.Errorf("EvalStarlark: %s", out.Err)
+						}
+					},
+				)
+			}
+		}()
+	}
+
+	close(start)
+	wg.Wait()
 }

@@ -821,4 +821,5 @@ type EvalStarlarkOut struct {
 	Kind        StarlarkOutKind
 	Args        []string // arguments for when Kind is not api.StarlarkDone
 	IsCancelled bool
+	Err         string // error returned by the evaluation
 }
