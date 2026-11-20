@@ -3637,3 +3637,25 @@ func TestTypeInfo(t *testing.T) {
 		}
 	})
 }
+
+func TestEvalStarlark(t *testing.T) {
+	withTestClient2("testvariables2", t, func(c service.Client) {
+		state := <-c.Continue()
+		assertNoError(state.Err, t, "Continue")
+		for _, tc := range []struct {
+			name, script string
+		}{
+			{"state", "state()"},
+			{"restart", "restart()"},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				out, err := c.EvalStarlark(0, api.EvalScope{GoroutineID: -1, Frame: 0}, normalLoadConfig, api.StarlarkStdin, tc.script, api.EvalStarlarkReset|api.EvalStarlarkNoninteractive)
+				t.Logf("%s -> %#v", tc.script, out)
+				assertNoError(err, t, "EvalStarlark")
+				if out.Kind != api.StarlarkDone {
+					t.Error("Expected StarlarkDone")
+				}
+			})
+		}
+	})
+}

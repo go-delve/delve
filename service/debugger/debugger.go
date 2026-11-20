@@ -80,6 +80,8 @@ type Debugger struct {
 	dumpState proc.DumpState
 
 	breakpointIDCounter int
+
+	StarlarkEnv *StarlarkEnv
 }
 
 type ExecuteKind int
@@ -238,6 +240,8 @@ func New(config *Config, processArgs []string) (*Debugger, error) {
 			return nil, err
 		}
 	}
+
+	d.StarlarkEnv = starlarkEnvNew(d)
 
 	return d, nil
 }
