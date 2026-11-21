@@ -1,4 +1,4 @@
-package starbind
+package debugger
 
 import (
 	"errors"
@@ -9,15 +9,16 @@ import (
 
 	"go.starlark.net/starlark"
 
+	"github.com/go-delve/delve/pkg/proc"
 	"github.com/go-delve/delve/service/api"
 )
 
 // autoLoadConfig is the load configuration used to automatically load more from a variable
-var autoLoadConfig = api.LoadConfig{MaxVariableRecurse: 1, MaxStringLen: 1024, MaxArrayValues: 64, MaxStructFields: -1}
+var autoLoadConfig = proc.LoadConfig{MaxVariableRecurse: 1, MaxStringLen: 1024, MaxArrayValues: 64, MaxStructFields: -1}
 
-// interfaceToStarlarkValue converts an interface{} variable (produced by
+// InterfaceToStarlarkValue converts an interface{} variable (produced by
 // decoding JSON) into a starlark.Value.
-func (env *Env) interfaceToStarlarkValue(v any) starlark.Value {
+func (env *StarlarkEnv) InterfaceToStarlarkValue(v any) starlark.Value {
 	switch v := v.(type) {
 	case bool:
 		return starlark.Bool(v)
@@ -61,7 +62,7 @@ func (env *Env) interfaceToStarlarkValue(v any) starlark.Value {
 		if v.Type().Kind() == reflect.Struct {
 			return structAsStarlarkValue{v: v, env: env}
 		}
-		return env.interfaceToStarlarkValue(v.Interface())
+		return env.InterfaceToStarlarkValue(v.Interface())
 	default:
 		vval := reflect.ValueOf(v)
 		switch vval.Type().Kind() {
@@ -89,7 +90,7 @@ func (env *Env) interfaceToStarlarkValue(v any) starlark.Value {
 type sliceAsStarlarkValue struct {
 	starlarkUnhashable
 	v   reflect.Value
-	env *Env
+	env *StarlarkEnv
 }
 
 var _ starlark.Indexable = sliceAsStarlarkValue{}
@@ -114,7 +115,7 @@ func (v sliceAsStarlarkValue) Index(i int) starlark.Value {
 	if i >= v.v.Len() {
 		return nil
 	}
-	return v.env.interfaceToStarlarkValue(v.v.Index(i).Interface())
+	return v.env.InterfaceToStarlarkValue(v.v.Index(i).Interface())
 }
 
 func (v sliceAsStarlarkValue) Len() int {
@@ -128,7 +129,7 @@ func (v sliceAsStarlarkValue) Iterate() starlark.Iterator {
 type sliceAsStarlarkValueIterator struct {
 	cur int
 	v   reflect.Value
-	env *Env
+	env *StarlarkEnv
 }
 
 func (it *sliceAsStarlarkValueIterator) Done() {
@@ -138,7 +139,7 @@ func (it *sliceAsStarlarkValueIterator) Next(p *starlark.Value) bool {
 	if it.cur >= it.v.Len() {
 		return false
 	}
-	*p = it.env.interfaceToStarlarkValue(it.v.Index(it.cur).Interface())
+	*p = it.env.InterfaceToStarlarkValue(it.v.Index(it.cur).Interface())
 	it.cur++
 	return true
 }
@@ -149,7 +150,7 @@ func (it *sliceAsStarlarkValueIterator) Next(p *starlark.Value) bool {
 type structAsStarlarkValue struct {
 	starlarkUnhashable
 	v   reflect.Value
-	env *Env
+	env *StarlarkEnv
 }
 
 var _ starlark.HasAttrs = structAsStarlarkValue{}
@@ -180,7 +181,7 @@ func (v structAsStarlarkValue) Attr(name string) (starlark.Value, error) {
 	if !r.IsValid() {
 		return starlark.None, starlark.NoSuchAttrError(fmt.Sprintf("no field named %q in %T", name, v.v.Interface()))
 	}
-	return v.env.interfaceToStarlarkValue(r), nil
+	return v.env.InterfaceToStarlarkValue(r), nil
 }
 
 func (v structAsStarlarkValue) SetField(name string, value starlark.Value) (err error) {
@@ -239,7 +240,7 @@ func varAddrExpr(v *api.Variable) string {
 	return fmt.Sprintf("(*(*%q)(%#x))", v.Type, v.Addr)
 }
 
-func (env *Env) variableValueToStarlarkValue(v *api.Variable, top bool) (starlark.Value, error) {
+func (env *StarlarkEnv) variableValueToStarlarkValue(v *api.Variable, top bool) (starlark.Value, error) {
 	if !top && v.Addr == 0 && v.Value == "" {
 		return starlark.None, nil
 	}
@@ -292,12 +293,12 @@ func (env *Env) variableValueToStarlarkValue(v *api.Variable, top bool) (starlar
 	return nil, nil
 }
 
-func (env *Env) autoLoad(expr string) *api.Variable {
-	v, err := env.ctx.Client().EvalVariable(api.EvalScope{GoroutineID: -1}, expr, autoLoadConfig)
+func (env *StarlarkEnv) autoLoad(expr string) *api.Variable {
+	v, err := env.d.EvalVariableInScope(-1, 0, 0, expr, autoLoadConfig)
 	if err != nil {
 		return &api.Variable{Unreadable: err.Error()}
 	}
-	return v
+	return api.ConvertVar(v)
 }
 
 func (v structAsStarlarkValue) AttrNames() []string {
@@ -316,7 +317,7 @@ func (v structAsStarlarkValue) AttrNames() []string {
 type structVariableAsStarlarkValue struct {
 	starlarkUnhashable
 	v   *api.Variable
-	env *Env
+	env *StarlarkEnv
 }
 
 var _ starlark.HasAttrs = structVariableAsStarlarkValue{}
@@ -370,7 +371,7 @@ func (v structVariableAsStarlarkValue) Get(key starlark.Value) (starlark.Value, 
 type sliceVariableAsStarlarkValue struct {
 	starlarkUnhashable
 	v   *api.Variable
-	env *Env
+	env *StarlarkEnv
 }
 
 var _ starlark.Indexable = sliceVariableAsStarlarkValue{}
@@ -411,7 +412,7 @@ func (v sliceVariableAsStarlarkValue) Iterate() starlark.Iterator {
 type sliceVariableAsStarlarkValueIterator struct {
 	cur int64
 	v   *api.Variable
-	env *Env
+	env *StarlarkEnv
 }
 
 func (it *sliceVariableAsStarlarkValueIterator) Done() {
@@ -430,7 +431,7 @@ func (it *sliceVariableAsStarlarkValueIterator) Next(p *starlark.Value) bool {
 type ptrVariableAsStarlarkValue struct {
 	starlarkUnhashable
 	v   *api.Variable
-	env *Env
+	env *StarlarkEnv
 }
 
 var _ starlark.HasAttrs = ptrVariableAsStarlarkValue{}
@@ -509,7 +510,7 @@ func (v ptrVariableAsStarlarkValue) Get(key starlark.Value) (starlark.Value, boo
 type mapVariableAsStarlarkValue struct {
 	starlarkUnhashable
 	v   *api.Variable
-	env *Env
+	env *StarlarkEnv
 }
 
 var _ starlark.IterableMapping = mapVariableAsStarlarkValue{}
@@ -562,7 +563,7 @@ func (v mapVariableAsStarlarkValue) Items() []starlark.Tuple {
 	return r
 }
 
-func mapStarlarkTupleAt(v *api.Variable, env *Env, i int) starlark.Tuple {
+func mapStarlarkTupleAt(v *api.Variable, env *StarlarkEnv, i int) starlark.Tuple {
 	keyv := env.autoLoad(varAddrExpr(&v.Children[i]))
 	key, err := env.variableValueToStarlarkValue(keyv, false)
 	if err != nil {
@@ -583,7 +584,7 @@ func (v mapVariableAsStarlarkValue) Iterate() starlark.Iterator {
 type mapVariableAsStarlarkValueIterator struct {
 	cur int
 	v   *api.Variable
-	env *Env
+	env *StarlarkEnv
 }
 
 func (it *mapVariableAsStarlarkValueIterator) Done() {
@@ -612,11 +613,11 @@ func (it *mapVariableAsStarlarkValueIterator) Next(p *starlark.Value) bool {
 	return true
 }
 
-// unmarshalStarlarkValue unmarshals a starlark.Value 'val' into a Go variable 'dst'.
+// UnmarshalStarlarkValue unmarshals a starlark.Value 'val' into a Go variable 'dst'.
 // This works similarly to encoding/json.Unmarshal and similar functions,
 // but instead of getting its input from a byte buffer, it uses a
 // starlark.Value.
-func unmarshalStarlarkValue(val starlark.Value, dst any, path string) error {
+func UnmarshalStarlarkValue(val starlark.Value, dst any, path string) error {
 	return unmarshalStarlarkValueIntl(val, reflect.ValueOf(dst), path)
 }
 
@@ -714,36 +715,35 @@ func unmarshalStarlarkValueIntl(val starlark.Value, dst reflect.Value, path stri
 	return nil
 }
 
-var _ starlark.HasAttrs = starlarkTargetObject{}
+var _ starlark.HasAttrs = &starlarkTargetObject{}
 
 type starlarkTargetObject struct {
 	starlarkUnhashable
-	env *Env
+	env *StarlarkEnv
 }
 
-func (starlarkTargetObject) String() string {
+func (*starlarkTargetObject) String() string {
 	return "<target variables>"
 }
 
-func (starlarkTargetObject) Truth() starlark.Bool {
+func (*starlarkTargetObject) Truth() starlark.Bool {
 	return true
 }
 
-func (starlarkTargetObject) Type() string {
+func (*starlarkTargetObject) Type() string {
 	return "<target variables>"
 }
 
-func (tgt starlarkTargetObject) AttrNames() []string {
+func (tgt *starlarkTargetObject) AttrNames() []string {
 	return nil
 }
 
-func (tgt starlarkTargetObject) Attr(name string) (starlark.Value, error) {
-	env := tgt.env
-	v, err := env.ctx.Client().EvalVariable(env.ctx.Scope(), name, env.ctx.LoadConfig())
+func (tgt *starlarkTargetObject) Attr(name string) (starlark.Value, error) {
+	v, err := tgt.env.d.EvalVariableInScope(tgt.env.scope.GoroutineID, tgt.env.scope.Frame, tgt.env.scope.DeferredCall, name, *api.LoadConfigToProc(&tgt.env.loadConfig))
 	if err != nil {
 		return starlark.None, fmt.Errorf("could not find variable %q: %v", name, err)
 	}
-	return env.variableValueToStarlarkValue(v, true)
+	return tgt.env.variableValueToStarlarkValue(api.ConvertVar(v), true)
 }
 
 type starlarkUnhashable struct {

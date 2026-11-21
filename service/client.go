@@ -224,6 +224,10 @@ type Client interface {
 	// DownloadLibraryDebugInfo attempts to download the specified library's debug info.
 	DownloadLibraryDebugInfo(n int) error
 
+	EvalStarlark(uint64, api.EvalScope, api.LoadConfig, string, string, api.EvalStarlarkFlags) (*api.EvalStarlarkOut, error)
+	EvalStarlarkContinue(uint64, string, api.EvalScope, api.LoadConfig, error) (*api.EvalStarlarkOut, error)
+	EvalStarlarkCancel(uint64, bool) error
+
 	// CallAPI allows calling an arbitrary rpc method (used by starlark bindings)
 	CallAPI(method string, args, reply any) error
 }

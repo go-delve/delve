@@ -41,8 +41,8 @@ Tests skipped by each supported backend:
 	* 6 not implemented
 * pie skipped = 2
 	* 2 upstream issue - https://github.com/golang/go/issues/29322
-* ppc64le skipped = 14
-	* 6 broken
+* ppc64le skipped = 13
+	* 5 broken
 	* 1 broken - global variable symbolication
 	* 7 not implemented
 * riscv64 skipped = 7

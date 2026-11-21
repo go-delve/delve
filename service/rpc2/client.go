@@ -3,6 +3,7 @@ package rpc2
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net"
@@ -725,6 +726,53 @@ func (c *RPCClient) TypeInfo(name string) (*api.TypeInfo, error) {
 		return nil, err
 	}
 	return out.TypeInfo, err
+}
+
+func (c *RPCClient) EvalStarlark(threadID uint64, scope api.EvalScope, loadConfig api.LoadConfig, path, script string, flags api.EvalStarlarkFlags) (*api.EvalStarlarkOut, error) {
+	out := &api.EvalStarlarkOut{}
+	err := c.call("EvalStarlark", EvalStarlarkIn{
+		ThreadID:   threadID,
+		Scope:      scope,
+		LoadConfig: loadConfig,
+		Path:       path,
+		Script:     script,
+		Flags:      flags,
+	}, out)
+	return out, evalStarlarkErr(out, err)
+}
+
+func (c *RPCClient) EvalStarlarkContinue(threadID uint64, value string, scope api.EvalScope, loadConfig api.LoadConfig, errIn error) (*api.EvalStarlarkOut, error) {
+	out := &api.EvalStarlarkOut{}
+	errInStr := ""
+	if errIn != nil {
+		errInStr = errIn.Error()
+	}
+	errOut := c.call("EvalStarlarkContinue", EvalStarlarkContinueIn{
+		ThreadID:   threadID,
+		Value:      value,
+		Scope:      scope,
+		LoadConfig: loadConfig,
+		Err:        errInStr,
+	}, out)
+	return out, evalStarlarkErr(out, errOut)
+}
+
+// evalStarlarkErr returns the error of an EvalStarlark or
+// EvalStarlarkContinue call: either the RPC error or the evaluation error
+// reported in out.Err.
+func evalStarlarkErr(out *api.EvalStarlarkOut, rpcErr error) error {
+	if rpcErr != nil {
+		return rpcErr
+	}
+	if out.Err != "" {
+		return errors.New(out.Err)
+	}
+	return nil
+}
+
+func (c *RPCClient) EvalStarlarkCancel(threadID uint64, all bool) error {
+	out := EvalStarlarkCancelOut{}
+	return c.call("EvalStarlarkCancel", EvalStarlarkCancelIn{ThreadID: threadID, All: all}, &out)
 }
 
 func (c *RPCClient) call(method string, args, reply any) error {

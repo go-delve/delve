@@ -464,7 +464,8 @@ func TestGeneratedDoc(t *testing.T) {
 		}
 	}
 
-	runScript := func(args ...string) []byte {
+	runScriptErr := func(args ...string) ([]byte, error) {
+		t.Helper()
 		cmd := goToolCommand(runtime.GOOS, runtime.GOARCH, args...)
 		var b bytes.Buffer
 		cmd.Stderr = &b
@@ -472,15 +473,31 @@ func TestGeneratedDoc(t *testing.T) {
 		if s := b.String(); s != "" {
 			t.Logf("stderr: %q", s)
 		}
+		return out, err
+	}
+
+	runScript := func(args ...string) []byte {
+		out, err := runScriptErr(args...)
 		if err != nil {
 			t.Fatalf("could not run script %v: %v (output: %q)", args, err, string(out))
 		}
 		return out
 	}
 
+	runScriptSuppressErr := func(args ...string) []byte {
+		out, _ := runScriptErr(args...)
+		return out
+	}
+
 	checkAutogenDoc(t, "Documentation/backend_test_health.md", "go run _scripts/gen-backend_test_health.go", runScript("_scripts/gen-backend_test_health.go", "-"))
-	checkAutogenDoc(t, "pkg/terminal/starbind/starlark_mapping.go", "'go generate' inside pkg/terminal/starbind", runScript("github.com/go-delve/build-tools/cmd/gen-starlark-bindings@latest", "go", "-"))
-	checkAutogenDoc(t, "Documentation/cli/starlark.md", "'go generate' inside pkg/terminal/starbind", runScript("github.com/go-delve/build-tools/cmd/gen-starlark-bindings@latest", "doc/dummy", "Documentation/cli/starlark.md"))
+
+	const genstarlark = "github.com/go-delve/build-tools/cmd/gen-starlark-bindings@latest"
+	if strings.TrimSpace(string(runScriptSuppressErr(genstarlark, "version"))) == "2" {
+		const skiplist = "EvalStarlark,EvalStarlarkContinue,EvalStarlarkCancel"
+		checkAutogenDoc(t, "service/rpc2/starlark_mapping.go", "'go generate' inside service/rpc2", runScript(genstarlark, "go", "-", skiplist))
+		checkAutogenDoc(t, "Documentation/cli/starlark.md", "'go generate' inside service/rpc2", runScript(genstarlark, "doc/dummy", "Documentation/cli/starlark.md", skiplist))
+	}
+
 	checkAutogenDoc(t, "Documentation/faq.md", "'go run _scripts/gen-faq-toc.go Documentation/faq.md Documentation/faq.md'", runScript("_scripts/gen-faq-toc.go", "Documentation/faq.md", "-"))
 	checkAutogenDoc(t, "service/rpccommon/suitablemethods.go", "'go generate' inside service/rpccommon", runScript("github.com/go-delve/build-tools/cmd/gen-suitablemethods@latest", "-"))
 	if goversion.VersionAfterOrEqual(runtime.Version(), 1, 18) {
