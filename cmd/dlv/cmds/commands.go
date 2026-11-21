@@ -572,7 +572,7 @@ func dapCmd(cmd *cobra.Command, args []string) {
 			fmt.Fprintf(os.Stderr, "Warning: backend ignored with dap; specify via launch/attach request instead\n")
 		}
 		if buildFlags != "" {
-			fmt.Fprintf(os.Stderr, "Warning: build flags ignored with dap; specify via launch/attach request instead\n")
+			fmt.Fprintln(os.Stderr, `Warning: --build-flags is ignored with dap; set "buildFlags" in the DAP launch request (for example, in VS Code launch.json)`)
 		}
 		if workingDir != "" {
 			fmt.Fprintf(os.Stderr, "Warning: working directory ignored with dap: specify via launch request instead\n")
