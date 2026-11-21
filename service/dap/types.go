@@ -276,6 +276,11 @@ type AttachConfig struct {
 	// The numeric ID of the process to be debugged.
 	ProcessID int `json:"processId,omitempty"`
 
+	// Path to the executable for local attach, relative to Delve's working
+	// directory if not absolute. If omitted or empty, the executable is
+	// discovered from the process. Ignored in remote mode.
+	Executable string `json:"executable,omitempty"`
+
 	// Wait for a process with a name beginning with this prefix.
 	AttachWaitFor string `json:"waitFor,omitempty"`
 

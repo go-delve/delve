@@ -143,8 +143,9 @@ func waitForSearchProcess(string, map[int]struct{}) (int, error) {
 	return 0, proc.ErrWaitForNotImplemented
 }
 
-// Attach to an existing process with the given PID.
-func Attach(pid int, waitFor *proc.WaitFor, _ []string) (*proc.TargetGroup, error) {
+// Attach attaches to an existing process with the given PID.
+// If path is empty, the executable path is determined from the process.
+func Attach(pid int, path string, waitFor *proc.WaitFor, debugInfoDirs []string) (*proc.TargetGroup, error) {
 	if waitFor.Valid() {
 		return nil, proc.ErrWaitForNotImplemented
 	}
@@ -173,7 +174,7 @@ func Attach(pid int, waitFor *proc.WaitFor, _ []string) (*proc.TargetGroup, erro
 		return nil, err
 	}
 
-	tgt, err := dbp.initialize("", []string{})
+	tgt, err := dbp.initialize(findExecutable(path, pid), debugInfoDirs)
 	if err != nil {
 		detachWithoutGroup(dbp, false)
 		return nil, err
