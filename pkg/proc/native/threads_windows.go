@@ -2,8 +2,10 @@ package native
 
 import (
 	"errors"
+	"fmt"
 	"syscall"
 
+	"github.com/go-delve/delve/pkg/logflags"
 	sys "golang.org/x/sys/windows"
 )
 
@@ -118,7 +120,13 @@ func (t *nativeThread) WriteMemory(addr uint64, data []byte) (int, error) {
 	// On ARM64 the instruction and data caches are not coherent,
 	// WriteProcessMemory only updates the data cache so we must flush
 	// the instruction cache explicitly. On x86/amd64 this is a no-op.
-	_ = _FlushInstructionCache(t.dbp.os.hProcess, uintptr(addr), uintptr(len(data)))
+	// Flush failures must not be silent: a stale I-cache can cause missed
+	// breakpoints or execute the wrong instruction after a patch.
+	if err := _FlushInstructionCache(t.dbp.os.hProcess, uintptr(addr), count); err != nil {
+		err = fmt.Errorf("FlushInstructionCache(%#x, %d): %w", addr, count, err)
+		logflags.DebuggerLogger().Errorf("%v", err)
+		return int(count), err
+	}
 	return int(count), nil
 }
 
