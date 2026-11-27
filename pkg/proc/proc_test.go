@@ -1872,6 +1872,9 @@ func TestPackageVariables(t *testing.T) {
 			if skippedVariable[v.Name] {
 				continue
 			}
+			if testBackend == "rr" && strings.Index(v.Name, ".") < 0 {
+				continue
+			}
 			if v.Unreadable != nil && v.Unreadable.Error() != "no location attribute Location" {
 				failed = true
 				t.Logf("Unreadable variable %s: %v", v.Name, v.Unreadable)

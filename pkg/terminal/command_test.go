@@ -624,6 +624,13 @@ func listIsAt(t *testing.T, term *FakeTerminal, listcmd string, cur, start, end 
 
 	t.Logf("%q: %q", listcmd, outstr)
 
+	for i := range lines {
+		if !strings.HasPrefix(lines[i], "Downloading debug info ") {
+			lines = lines[i:]
+			break
+		}
+	}
+
 	if cur >= 0 && !strings.Contains(lines[0], fmt.Sprintf(":%d", cur)) {
 		t.Fatalf("Could not find current line number in first output line: %q", lines[0])
 	}
